@@ -2,12 +2,10 @@
 let state = {
     orders: [],
     filters: {
-        search: "",
+        month: "",
         startDate: "",
         endDate: "",
-        cliente: "",
-        transportadora: "",
-        categoria: ""
+        cliente: ""
     },
     pagination: {
         currentPage: 1,
@@ -36,16 +34,13 @@ let charts = {
 // Elementos da DOM
 const DOM = {
     themeToggle: document.getElementById("theme-toggle"),
-    filterSearch: document.getElementById("filter-search"),
+    filterMonth: document.getElementById("filter-month"),
     filterStartDate: document.getElementById("filter-start-date"),
     filterEndDate: document.getElementById("filter-end-date"),
     filterCliente: document.getElementById("filter-cliente"),
-    filterTransportadora: document.getElementById("filter-transportadora"),
-    filterCategoria: document.getElementById("filter-categoria"),
     btnClearFilters: document.getElementById("btn-clear-filters"),
     btnNewOrder: document.getElementById("btn-new-order"),
     btnExportCsv: document.getElementById("btn-export-csv"),
-    btnResetData: document.getElementById("btn-reset-data"),
     btnImportExcel: document.getElementById("btn-import-excel"),
     btnClearImport: document.getElementById("btn-clear-import"),
     excelUpload: document.getElementById("excel-upload"),
@@ -218,13 +213,39 @@ function populateFilterDropdowns() {
     const categorias = [...new Set(state.orders.map(o => o.categoria))].sort();
 
     fillDropdown(DOM.filterCliente, clientes, "Todos os Clientes");
-    fillDropdown(DOM.filterTransportadora, transportadoras, "Todas as Transportadoras");
-    fillDropdown(DOM.filterCategoria, categorias, "Todas as Categorias");
 
     // Formulário do modal
     fillDropdown(DOM.formCliente, clientes, "Selecione o Cliente", false);
     fillDropdown(DOM.formTransportadora, transportadoras, "Selecione a Transportadora", false);
     fillDropdown(DOM.formCategoria, categorias, "Selecione a Categoria", false);
+
+    populateMonthDropdown();
+}
+
+// Meses do ano em português para exibição no filtro (ex: "Junho/2026")
+const MONTH_NAMES_PT = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+];
+
+// Preencher dropdown de Mês/Ano com base nos meses realmente presentes na base de pedidos
+function populateMonthDropdown() {
+    if (!DOM.filterMonth) return;
+
+    const monthKeys = [...new Set(state.orders
+        .filter(o => o.data_pedido)
+        .map(o => o.data_pedido.slice(0, 7)) // "YYYY-MM"
+    )].sort().reverse(); // meses mais recentes primeiro
+
+    let html = `<option value="">Todos os Meses</option>`;
+    monthKeys.forEach(key => {
+        const [year, month] = key.split("-");
+        const label = `${MONTH_NAMES_PT[parseInt(month, 10) - 1]}/${year}`;
+        html += `<option value="${key}">${label}</option>`;
+    });
+
+    DOM.filterMonth.innerHTML = html;
+    DOM.filterMonth.value = state.filters.month || "";
 }
 
 function fillDropdown(element, list, defaultText, includeAllOption = true) {
@@ -249,8 +270,8 @@ function setupEventListeners() {
     });
     
     // Filtros
-    DOM.filterSearch.addEventListener("input", (e) => {
-        state.filters.search = e.target.value;
+    DOM.filterMonth.addEventListener("change", (e) => {
+        state.filters.month = e.target.value;
         state.pagination.currentPage = 1;
         updateDashboard();
     });
@@ -273,24 +294,11 @@ function setupEventListeners() {
         updateDashboard();
     });
     
-    DOM.filterTransportadora.addEventListener("change", (e) => {
-        state.filters.transportadora = e.target.value;
-        state.pagination.currentPage = 1;
-        updateDashboard();
-    });
-    
-    DOM.filterCategoria.addEventListener("change", (e) => {
-        state.filters.categoria = e.target.value;
-        state.pagination.currentPage = 1;
-        updateDashboard();
-    });
-    
     DOM.btnClearFilters.addEventListener("click", clearFilters);
     
     // Ações do Cabeçalho
     DOM.btnNewOrder.addEventListener("click", () => openOrderModal());
     DOM.btnExportCsv.addEventListener("click", exportToCsv);
-    DOM.btnResetData.addEventListener("click", resetData);
 
     // Importação de Excel
     DOM.btnImportExcel.addEventListener("click", () => DOM.excelUpload.click());
@@ -401,52 +409,30 @@ function switchTab(tab) {
 
 // Limpar Filtros
 function clearFilters() {
-    DOM.filterSearch.value = "";
+    DOM.filterMonth.value = "";
     DOM.filterStartDate.value = "";
     DOM.filterEndDate.value = "";
     DOM.filterCliente.value = "";
-    DOM.filterTransportadora.value = "";
-    DOM.filterCategoria.value = "";
     
     state.filters = {
-        search: "",
+        month: "",
         startDate: "",
         endDate: "",
-        cliente: "",
-        transportadora: "",
-        categoria: ""
+        cliente: ""
     };
     state.pagination.currentPage = 1;
     updateDashboard();
 }
 
-// Resetar dados
-function resetData() {
-    if (confirm("Deseja realmente restaurar os dados originais de simulação? Suas alterações serão perdidas.")) {
-        state.orders = [...INITIAL_ORDERS_DATA];
-        localStorage.setItem("otif-orders", JSON.stringify(state.orders));
-        populateFilterDropdowns();
-        clearFilters();
-    }
-}
-
 // Filtrar Dados da Base
 function getFilteredData() {
     return state.orders.filter(order => {
-        const query = state.filters.search.toLowerCase();
-        const matchesSearch = !query || 
-            order.id.toLowerCase().includes(query) ||
-            order.cliente.toLowerCase().includes(query) ||
-            order.transportadora.toLowerCase().includes(query);
-            
+        const matchesMonth = !state.filters.month || (order.data_pedido && order.data_pedido.slice(0, 7) === state.filters.month);
         const matchesStartDate = !state.filters.startDate || order.data_pedido >= state.filters.startDate;
         const matchesEndDate = !state.filters.endDate || order.data_pedido <= state.filters.endDate;
-        
         const matchesCliente = !state.filters.cliente || order.cliente === state.filters.cliente;
-        const matchesTransportadora = !state.filters.transportadora || order.transportadora === state.filters.transportadora;
-        const matchesCategoria = !state.filters.categoria || order.categoria === state.filters.categoria;
         
-        return matchesSearch && matchesStartDate && matchesEndDate && matchesCliente && matchesTransportadora && matchesCategoria;
+        return matchesMonth && matchesStartDate && matchesEndDate && matchesCliente;
     });
 }
 

@@ -27,9 +27,6 @@
                 <button class="btn btn-secondary" id="btn-clear-import" title="Limpar dados importados e voltar aos dados originais" style="display:none;">
                     <i data-lucide="trash-2"></i> Limpar Importação
                 </button>
-                <button class="btn btn-secondary" id="btn-reset-data" title="Restaurar dados originais de simulação">
-                    <i data-lucide="rotate-ccw"></i> Resetar Dados
-                </button>
                 <button class="btn btn-secondary" id="btn-export-csv" title="Exportar pedidos filtrados para planilha Excel">
                     <i data-lucide="download"></i> Exportar Excel
                 </button>
@@ -45,12 +42,10 @@
         <!-- Painel de Filtros -->
         <section class="filters-panel">
             <div class="filters-grid">
-                <div class="filter-group" style="grid-column: span 2;">
-                    <label for="filter-search">Pesquisa Rápida</label>
-                    <div class="search-container">
-                        <i data-lucide="search" class="search-icon"></i>
-                        <input type="text" id="filter-search" class="filter-control search-input" placeholder="Pesquisar por ID, cliente, transportadora...">
-                    </div>
+                <div class="filter-group">
+                    <label for="filter-month">Mês</label>
+                    <select id="filter-month" class="filter-control">
+                    </select>
                 </div>
                 <div class="filter-group">
                     <label for="filter-start-date">De (Data Pedido)</label>
@@ -63,18 +58,6 @@
                 <div class="filter-group">
                     <label for="filter-cliente">Cliente</label>
                     <select id="filter-cliente" class="filter-control">
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label for="filter-transportadora">Transportadora</label>
-                    <select id="filter-transportadora" class="filter-control">
-
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label for="filter-categoria">Categoria</label>
-                    <select id="filter-categoria" class="filter-control">
-
                     </select>
                 </div>
                 <div class="filter-group">
