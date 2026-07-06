@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="pt-br" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Dashboard interativo para controle de nível de serviço logístico com indicadores OTIF (On-Time In-Full)">
+    <title>Dashboard OTIF - Pilar Atendimento</title>
+    <!-- Folha de Estilos Personalizada -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Cabeçalho Principal -->
+        <header>
+            <div class="logo-section">
+                <h1>
+                    <i data-lucide="bar-chart-3" style="color: var(--primary);"></i>
+                    Dashboard OTIF
+                </h1>
+                <p>Monitoramento de Nível de Serviço Logístico (Pilar Atendimento)</p>
+            </div>
+            <div class="header-actions">
+                <input type="file" id="excel-upload" accept=".xlsx,.xls,.csv" style="display:none;">
+                <button class="btn btn-secondary" id="btn-import-excel" title="Importar pedidos a partir de planilha Excel">
+                    <i data-lucide="upload"></i> Importar Excel
+                </button>
+                <button class="btn btn-secondary" id="btn-clear-import" title="Limpar dados importados e voltar aos dados originais" style="display:none;">
+                    <i data-lucide="trash-2"></i> Limpar Importação
+                </button>
+                <button class="btn btn-secondary" id="btn-reset-data" title="Restaurar dados originais de simulação">
+                    <i data-lucide="rotate-ccw"></i> Resetar Dados
+                </button>
+                <button class="btn btn-secondary" id="btn-export-csv" title="Exportar pedidos filtrados para planilha Excel">
+                    <i data-lucide="download"></i> Exportar Excel
+                </button>
+                <button class="btn btn-primary" id="btn-new-order" title="Cadastrar novo pedido de entrega">
+                    <i data-lucide="plus"></i> Novo Pedido
+                </button>
+                <button class="btn-circle" id="theme-toggle" title="Alternar tema Escuro/Claro">
+                    <i data-lucide="sun"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Painel de Filtros -->
+        <section class="filters-panel">
+            <div class="filters-grid">
+                <div class="filter-group" style="grid-column: span 2;">
+                    <label for="filter-search">Pesquisa Rápida</label>
+                    <div class="search-container">
+                        <i data-lucide="search" class="search-icon"></i>
+                        <input type="text" id="filter-search" class="filter-control search-input" placeholder="Pesquisar por ID, cliente, transportadora...">
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label for="filter-start-date">De (Data Pedido)</label>
+                    <input type="date" id="filter-start-date" class="filter-control">
+                </div>
+                <div class="filter-group">
+                    <label for="filter-end-date">Até (Data Pedido)</label>
+                    <input type="date" id="filter-end-date" class="filter-control">
+                </div>
+                <div class="filter-group">
+                    <label for="filter-cliente">Cliente</label>
+                    <select id="filter-cliente" class="filter-control">
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="filter-transportadora">Transportadora</label>
+                    <select id="filter-transportadora" class="filter-control">
+
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="filter-categoria">Categoria</label>
+                    <select id="filter-categoria" class="filter-control">
+
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <button class="btn btn-secondary" id="btn-clear-filters" style="width: 100%; justify-content: center; height: 42px;">
+                        <i data-lucide="filter-x"></i> Limpar Filtros
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Navegação de Abas -->
+        <nav class="tabs-nav" id="tabs-navigation">
+            <button class="tab-btn active" data-tab="pdv">
+                <i data-lucide="store"></i> PDV (Clientes)
+            </button>
+            <button class="tab-btn" data-tab="hl">
+                <i data-lucide="droplet"></i> HL (Hectolitros)
+            </button>
+            <button class="tab-btn" data-tab="sku">
+                <i data-lucide="package"></i> SKU (Categorias)
+            </button>
+        </nav>
+
+        <!-- Grid de Indicadores Principais (KPI Cards) -->
+        <section class="kpis-grid">
+            <!-- Card 1: OTIF -->
+            <div class="kpi-card kpi-otif" id="kpi-card-otif">
+                <div class="kpi-info">
+                    <h3 id="kpi-otif-title">OTIF Global</h3>
+                    <div class="kpi-value" id="kpi-otif-value">0.0%</div>
+                    <div class="kpi-meta" id="kpi-otif-meta">
+                        <i data-lucide="target" style="width:14px;height:14px;"></i> Meta: 85.0%
+                    </div>
+                </div>
+                <div class="kpi-chart-icon">
+                    <svg class="radial-progress" viewBox="0 0 36 36">
+                        <circle class="bg" cx="18" cy="18" r="15.915"></circle>
+                        <circle class="progress" cx="18" cy="18" r="15.915"></circle>
+                    </svg>
+                    <span class="radial-text" id="kpi-otif-radial-label">OTIF</span>
+                </div>
+            </div>
+
+            <!-- Card 2: On-Time -->
+            <div class="kpi-card kpi-ot" id="kpi-card-ot">
+                <div class="kpi-info">
+                    <h3 id="kpi-ot-title">On-Time (No Prazo)</h3>
+                    <div class="kpi-value" id="kpi-ot-value">0.0%</div>
+                    <div class="kpi-meta" id="kpi-ot-meta">
+                        <i data-lucide="target" style="width:14px;height:14px;"></i> Meta: 90.0%
+                    </div>
+                </div>
+                <div class="kpi-chart-icon">
+                    <svg class="radial-progress" viewBox="0 0 36 36">
+                        <circle class="bg" cx="18" cy="18" r="15.915"></circle>
+                        <circle class="progress" cx="18" cy="18" r="15.915"></circle>
+                    </svg>
+                    <span class="radial-text" id="kpi-ot-radial-label">Prazo</span>
+                </div>
+            </div>
+
+            <!-- Card 3: In-Full -->
+            <div class="kpi-card kpi-if" id="kpi-card-if">
+                <div class="kpi-info">
+                    <h3 id="kpi-if-title">In-Full (Completo)</h3>
+                    <div class="kpi-value" id="kpi-if-value">0.0%</div>
+                    <div class="kpi-meta" id="kpi-if-meta">
+                        <i data-lucide="target" style="width:14px;height:14px;"></i> Meta: 95.0%
+                    </div>
+                </div>
+                <div class="kpi-chart-icon">
+                    <svg class="radial-progress" viewBox="0 0 36 36">
+                        <circle class="bg" cx="18" cy="18" r="15.915"></circle>
+                        <circle class="progress" cx="18" cy="18" r="15.915"></circle>
+                    </svg>
+                    <span class="radial-text" id="kpi-if-radial-label">Carga</span>
+                </div>
+            </div>
+
+            <!-- Card 4: Volume de Perdidos -->
+            <div class="kpi-card kpi-total" id="kpi-card-total">
+                <div class="kpi-info">
+                    <h3 id="kpi-total-title">Volume de Perdidos</h3>
+                    <div class="kpi-value" id="kpi-total-value">0.0%</div>
+                    <div class="kpi-meta" id="kpi-total-meta">
+                        <i data-lucide="target" style="width:14px;height:14px;"></i> Meta: 15.0%
+                    </div>
+                </div>
+                <div class="kpi-chart-icon">
+                    <svg class="radial-progress" viewBox="0 0 36 36">
+                        <circle class="bg" cx="18" cy="18" r="15.915"></circle>
+                        <circle class="progress" cx="18" cy="18" r="15.915"></circle>
+                    </svg>
+                    <span class="radial-text" id="kpi-total-radial-label">Perda</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- CONTEÚDO DAS ABAS (CARREGADO DINAMICAMENTE) -->
+
+        <!-- ABA 1: PDV (Clientes) -->
+        <div class="tab-panel-content active" id="tab-panel-pdv">
+            <div class="ranking-grid">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h2>Evolução OTIF % Semanal (Pedidos)</h2>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-trend-pdv"></canvas>
+                    </div>
+                </div>
+                <div class="ranking-card">
+                    <div class="ranking-title">
+                        <i data-lucide="store" style="color: var(--primary);"></i> Desempenho por PDV (Clientes)
+                    </div>
+                    <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+                        <table class="orders-table" style="font-size: 13px;">
+                            <thead>
+                                <tr>
+                                    <th>Cliente</th>
+                                    <th>Ped. Totais</th>
+                                    <th>Atrasos</th>
+                                    <th>Cortes</th>
+                                    <th>OTIF %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ranking-pdv-body">
+                                <!-- Preenchido dinamicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="charts-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 32px;">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h2>Nível de Serviço (OTIF %) por Cliente</h2>
+                    </div>
+                    <div class="chart-container" style="min-height: 250px;">
+                        <canvas id="chart-pdv-otif"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h2>Causas de Falha nos PDVs (Consolidado)</h2>
+                    </div>
+                    <div class="chart-container" style="min-height: 250px;">
+                        <canvas id="chart-pdv-causes"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ABA 2: HL (Hectolitros) -->
+        <div class="tab-panel-content" id="tab-panel-hl">
+            <div class="ranking-grid">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h2>Volume Semanal (Hectolitros - HL): Pedido vs. Entregue</h2>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-trend-hl"></canvas>
+                    </div>
+                </div>
+                <div class="ranking-card">
+                    <div class="ranking-title">
+                        <i data-lucide="truck" style="color: var(--success);"></i> Desempenho por Transportadora (Volume HL)
+                    </div>
+                    <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+                        <table class="orders-table" style="font-size: 13px;">
+                            <thead>
+                                <tr>
+                                    <th>Transportadora</th>
+                                    <th>HL Pedido</th>
+                                    <th>HL Entregue</th>
+                                    <th>Perda (HL)</th>
+                                    <th>OTIF Vol. %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ranking-hl-carrier-body">
+                                <!-- Preenchido dinamicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="charts-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 32px;">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h2>Ranking de PDVs por Volume Movimentado (HL)</h2>
+                    </div>
+                    <div class="table-responsive" style="max-height: 260px; overflow-y: auto;">
+                        <table class="orders-table" style="font-size: 13px;">
+                            <thead>
+                                <tr>
+                                    <th>Cliente (PDV)</th>
+                                    <th>HL Pedido</th>
+                                    <th>HL Entregue</th>
+                                    <th>OTIF Vol. %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ranking-hl-client-body">
+                                <!-- Preenchido dinamicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h2>Volume Total Entregue (HL) por Categoria</h2>
+                    </div>
+                    <div class="chart-container" style="min-height: 250px;">
+                        <canvas id="chart-hl-categories"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ABA 3: SKU (Categorias) -->
+        <div class="tab-panel-content" id="tab-panel-sku">
+            <div class="ranking-grid">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h2>Grau de Atendimento Volumétrico por Categoria</h2>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-sku-share"></canvas>
+                    </div>
+                </div>
+                <div class="ranking-card">
+                    <div class="ranking-title">
+                        <i data-lucide="package" style="color: var(--accent);"></i> Desempenho por Categoria de SKU
+                    </div>
+                    <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+                        <table class="orders-table" style="font-size: 13px;">
+                            <thead>
+                                <tr>
+                                    <th>Categoria</th>
+                                    <th>Qtd. Pedidos</th>
+                                    <th>Corte Médio (%)</th>
+                                    <th>In-Full (IF) %</th>
+                                    <th>OTIF %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ranking-sku-body">
+                                <!-- Preenchido dinamicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="charts-grid" style="grid-template-columns: 1fr; margin-bottom: 32px;">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h2>OTIF % Geral das Categorias de SKU</h2>
+                    </div>
+                    <div class="chart-container" style="min-height: 250px;">
+                        <canvas id="chart-sku-otif"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabela Operacional de Pedidos -->
+        <section class="table-panel">
+            <div class="table-header">
+                <h2>Lista Detalhada de Entregas</h2>
+            </div>
+            <div class="table-responsive">
+                <table class="orders-table">
+                    <thead>
+                        <tr>
+                            <th data-sort="id">Ped. ID</th>
+                            <th data-sort="cliente">Cliente</th>
+                            <th data-sort="transportadora">Transportadora</th>
+                            <th data-sort="categoria">Categoria</th>
+                            <th data-sort="data_pedido">Data Pedido</th>
+                            <th data-sort="data_prevista">Prev. Entrega</th>
+                            <th data-sort="data_entrega">Entrega Real</th>
+                            <th>Status (OT | IF)</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- Carregado dinamicamente -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="table-footer">
+                <span id="table-info">Exibindo 1-10 de 55 pedidos</span>
+                <div class="pagination">
+                    <button class="pagination-btn" id="btn-prev-page" title="Página Anterior">
+                        <i data-lucide="chevron-left" style="width:16px;height:16px;"></i>
+                    </button>
+                    <span class="pagination-info" id="current-page-indicator">1 de 6</span>
+                    <button class="pagination-btn" id="btn-next-page" title="Próxima Página">
+                        <i data-lucide="chevron-right" style="width:16px;height:16px;"></i>
+                    </button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Modal para Inserção/Edição de Pedidos -->
+    <div class="modal-overlay" id="order-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="modal-title">Novo Pedido de Entrega</h3>
+                <button class="modal-close" id="modal-close" title="Fechar modal">
+                    <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+                </button>
+            </div>
+            <form id="order-form">
+                <div class="modal-body">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="form-id">Código do Pedido</label>
+                            <input type="text" id="form-id" class="filter-control" placeholder="Ex: PED-2026-060" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-valor">Valor do Pedido (R$)</label>
+                            <input type="number" step="0.01" id="form-valor" class="filter-control" placeholder="0.00" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-cliente">Cliente</label>
+                            <select id="form-cliente" class="filter-control" required>
+                                <!-- JS -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-transportadora">Transportadora</label>
+                            <select id="form-transportadora" class="filter-control" required>
+                                <!-- JS -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-categoria">Categoria</label>
+                            <select id="form-categoria" class="filter-control" required>
+                                <!-- JS -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-pedido-date">Data do Pedido</label>
+                            <input type="date" id="form-pedido-date" class="filter-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-prevista-date">Previsão de Entrega</label>
+                            <input type="date" id="form-prevista-date" class="filter-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-entrega-date">Entrega Realizada</label>
+                            <input type="date" id="form-entrega-date" class="filter-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-qtd-pedida">Qtd. Pedida</label>
+                            <input type="number" id="form-qtd-pedida" class="filter-control" placeholder="Ex: 100" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-qtd-entregue">Qtd. Entregue</label>
+                            <input type="number" id="form-qtd-entregue" class="filter-control" placeholder="Ex: 100" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-volume-hl">Volume do Pedido (HL)</label>
+                            <input type="number" step="0.1" id="form-volume-hl" class="filter-control" placeholder="Ex: 45.0" required>
+                        </div>
+                        <div class="form-group form-group-full" id="form-motivo-falha-group" style="display: none;">
+                            <label for="form-motivo-falha">Motivo do Desvio (Causa Raiz)</label>
+                            <select id="form-motivo-falha" class="filter-control">
+                                <option value="Nenhum">Nenhum (OTIF Completo)</option>
+                                <option value="Atraso na Transportadora">Atraso na Transportadora</option>
+                                <option value="Quebra de Estoque">Quebra de Estoque</option>
+                                <option value="Atraso no Faturamento">Atraso no Faturamento</option>
+                                <option value="Avaria no Transporte">Avaria no Transporte</option>
+                                <option value="Erro de Separação">Erro de Separação</option>
+                            </select>
+                            <span class="help">Como o pedido apresentou atraso ou corte, especifique a causa raiz.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btn-submit-modal">Salvar Pedido</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Bibliotecas CDN -->
+    <!-- Gráficos: Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Ícones: Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Parser de Planilhas: SheetJS -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    
+    <!-- Lógica da Aplicação -->
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
