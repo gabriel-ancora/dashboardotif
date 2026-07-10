@@ -1,5 +1,5 @@
 const supabaseUrl = 'https://eqvlivvaqnadasfchnzp.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxdmxpdnZhcW5hZGFzZmNobnpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MDA4NDAsImV4cCI6MjA5ODk3Njg0MH0.szN2eZVtOi8-MVXgvgy_UZRJFA6L0UDpy_t0b9nsgKo';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxdmxpdnZhcW5hZGFzZmNobnpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MDA4NDAsImV4cCI6MjA5ODk3Njg0MH0.szN2eZVtOi8-MV[...]
 const banco = supabase.createClient(supabaseUrl, supabaseKey);
 
 // Funções de validação de regra de negócio OTIF
@@ -14,29 +14,38 @@ function isOrderIF(order) {
     const sItem = (order.situacao_item || '').trim().toLowerCase();
     const sAtend = (order.situacao_atend_item || '').trim().toLowerCase();
     const sNf = (order.situacao_nf || '').trim().toLowerCase();
-    return sItem === 'ENTREGUE' && sAtend === 'ATENDIDO' && sNf === 'NOTA EMITIDA';
+    return sItem === 'entregue' && sAtend === 'atendido' && sNf === 'nota emitida';
 }
 
-// Controle de Estado do Dashboard
+// Controle de Estado do Dashboard - CENTRALIZADO
 let state = {
     orders: [],
     filters: {
         month: "",
         startDate: "",
         endDate: "",
-        cliente: ""
+        cliente: "",
+        ped_id: "",
+        numero_pedido: "",
+        tipo_pedido: "",
+        desc_tipo_movimento: "",
+        volume_hectolitro: "",
+        situacao_item: "",
+        situacao_atend_item: "",
+        situacao_nf: ""
     },
     pagination: {
         currentPage: 1,
-        itemsPerPage: 10
+        itemsPerPage: 10,
+        totalItems: 0
     },
     sorting: {
-        column: "data_pedido",
-        direction: "desc" // 'asc' ou 'desc'
+        column: "ped_id",
+        direction: "asc"
     },
     theme: "dark",
     editingOrderId: null,
-    activeTab: "pdv" // 'pdv', 'hl' ou 'sku'
+    activeTab: "pdv"
 };
 
 // Referências dos Gráficos do Chart.js
@@ -59,99 +68,39 @@ const DOM = {
     filterCliente: document.getElementById("filter-cliente"),
     btnClearFilters: document.getElementById("btn-clear-filters"),
     btnClearFiltersTable: document.getElementById("btn-clear-filters-table"),
-    btnNewOrder: document.getElementById("btn-new-order"),
-    btnExportCsv: document.getElementById("btn-export-csv"),
-    btnImportExcel: document.getElementById("btn-import-excel"),
-    btnClearImport: document.getElementById("btn-clear-import"),
-    excelUpload: document.getElementById("excel-upload"),
     
-    // KPI Cards Containers
-    cardOtif: document.getElementById("kpi-card-otif"),
-    cardOt: document.getElementById("kpi-card-ot"),
-    cardIf: document.getElementById("kpi-card-if"),
-    cardTotal: document.getElementById("kpi-card-total"),
-    
-    // KPI Card Titles
-    titleOtif: document.getElementById("kpi-otif-title"),
-    titleOt: document.getElementById("kpi-ot-title"),
-    titleIf: document.getElementById("kpi-if-title"),
-    titleTotal: document.getElementById("kpi-total-title"),
-    
-    // KPI Card Values
+    // KPI Cards
     kpiOtif: document.getElementById("kpi-otif-value"),
     kpiOt: document.getElementById("kpi-ot-value"),
     kpiIf: document.getElementById("kpi-if-value"),
     kpiTotal: document.getElementById("kpi-total-value"),
     
-    // KPI Card Metas
-    metaOtif: document.getElementById("kpi-otif-meta"),
-    metaOt: document.getElementById("kpi-ot-meta"),
-    metaIf: document.getElementById("kpi-if-meta"),
-    metaTotal: document.getElementById("kpi-total-meta"),
-    
-    // Radials
     circleOtif: document.querySelector("#kpi-card-otif .progress"),
     circleOt: document.querySelector("#kpi-card-ot .progress"),
     circleIf: document.querySelector("#kpi-card-if .progress"),
     circleTotal: document.querySelector("#kpi-card-total .progress"),
     
-    // Radial labels
-    labelOtif: document.getElementById("kpi-otif-radial-label"),
-    labelOt: document.getElementById("kpi-ot-radial-label"),
-    labelIf: document.getElementById("kpi-if-radial-label"),
-    labelTotal: document.getElementById("kpi-total-radial-label"),
-    
-    // Tabela Operacional Geral
+    // Tabela
     tableBody: document.getElementById("table-body"),
     tableInfo: document.getElementById("table-info"),
     btnPrevPage: document.getElementById("btn-prev-page"),
     btnNextPage: document.getElementById("btn-next-page"),
     currentPageIndicator: document.getElementById("current-page-indicator"),
-    tableHeaders: document.querySelectorAll(".orders-table th[data-sort]"),
     
-    // Insights
-    insightsText: document.getElementById("insights-text"),
-    insightsList: document.getElementById("insights-list"),
-    
-    // Modal
-    modal: document.getElementById("order-modal"),
-    modalTitle: document.getElementById("modal-title"),
-    modalClose: document.getElementById("modal-close"),
-    modalForm: document.getElementById("order-form"),
-    btnCancelModal: document.getElementById("btn-cancel-modal"),
-    
-    // Form do Modal
-    formId: document.getElementById("form-id"),
-    formCliente: document.getElementById("form-cliente"),
-    formTransportadora: document.getElementById("form-transportadora"),
-    formCategoria: document.getElementById("form-categoria"),
-    formValor: document.getElementById("form-valor"),
-    formPedidoDate: document.getElementById("form-pedido-date"),
-    formPrevistaDate: document.getElementById("form-prevista-date"),
-    formEntregaDate: document.getElementById("form-entrega-date"),
-    formQtdPedida: document.getElementById("form-qtd-pedida"),
-    formQtdEntregue: document.getElementById("form-qtd-entregue"),
-    formVolumeHl: document.getElementById("form-volume-hl"),
-    formMotivoFalha: document.getElementById("form-motivo-falha"),
-    formMotivoFalhaGroup: document.getElementById("form-motivo-falha-group"),
-    
-    // Abas de Classificação (Rankings)
+    // Rankings
     rankingPdvBody: document.getElementById("ranking-pdv-body"),
-    rankingHlCarrierBody: document.getElementById("ranking-hl-carrier-body"),
     rankingHlClientBody: document.getElementById("ranking-hl-client-body"),
     rankingSkuBody: document.getElementById("ranking-sku-body")
 };
 
-// Inicialização do App
+// Inicialização
 document.addEventListener("DOMContentLoaded", async () => {
     loadTheme();
-    await loadData();
-    populateFilterDropdowns();
     setupEventListeners();
-    updateDashboard();
+    await loadInitialData();
 });
 
-// Carregar Tema (Dark/Light)
+// Carregar Tema
 function loadTheme() {
     const savedTheme = localStorage.getItem("otif-theme") || "dark";
     state.theme = savedTheme;
@@ -173,74 +122,51 @@ function toggleTheme() {
     document.documentElement.setAttribute("data-theme", state.theme);
     localStorage.setItem("otif-theme", state.theme);
     updateThemeIcon();
-    
-    // Forçar re-renderização de gráficos sob a nova paleta do tema
     renderCharts(getFilteredData());
 }
 
-// Carregar Dados
-async function loadData() {
+// Carregar dados iniciais do Supabase
+async function loadInitialData() {
     try {
         const { data, error } = await banco.from('Pedidos').select('*');
         if (error) throw error;
         state.orders = data || [];
-        state.dataSource = "api";
+        console.log(`✅ Carregados ${state.orders.length} pedidos do banco`);
     } catch (error) {
-        console.warn('Supabase indisponível:', error.message);
+        console.warn('⚠️ Erro ao carregar dados:', error.message);
         state.orders = [];
-        state.dataSource = "empty";
     }
+    
+    populateFilterDropdowns();
+    updateDashboard();
 }
 
-// Exibir/ocultar botão "Limpar Importação"
-function showImportBadge(show) {
-    if (DOM.btnClearImport) {
-        DOM.btnClearImport.style.display = show ? "inline-flex" : "none";
-    }
-}
-
-// Preencher Dropdowns com dados exclusivos da base
+// Preencher dropdowns de filtro
 function populateFilterDropdowns() {
     const clientes = [...new Set(state.orders.map(o => o.cod_cliente).filter(Boolean))].sort();
-    const categorias = [...new Set(state.orders.map(o => o.desc_tipo_movimento).filter(Boolean))].sort();
-
     fillDropdown(DOM.filterCliente, clientes, "Todos os Clientes");
-
-    // Formulário do modal
-    if (DOM.formCliente) fillDropdown(DOM.formCliente, clientes, "Selecione o Cliente", false);
-    if (DOM.formCategoria) fillDropdown(DOM.formCategoria, categorias, "Selecione a Categoria", false);
-
-    populateMonthDropdown();
-}
-
-// Meses do ano em português para exibição no filtro (ex: "Junho/2026")
-const MONTH_NAMES_PT = [
-    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-];
-
-// Preencher dropdown de Mês/Ano com base nos meses realmente presentes na base de pedidos
-function populateMonthDropdown() {
-    if (!DOM.filterMonth) return;
-
+    
     const monthKeys = [...new Set(state.orders
         .filter(o => o.data_entrega_original)
-        .map(o => o.data_entrega_original.slice(0, 7)) // "YYYY-MM"
-    )].sort().reverse(); // meses mais recentes primeiro
-
+        .map(o => o.data_entrega_original.slice(0, 7))
+    )].sort().reverse();
+    
+    const MONTH_NAMES_PT = [
+        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ];
+    
     let html = `<option value="">Todos os Meses</option>`;
     monthKeys.forEach(key => {
         const [year, month] = key.split("-");
         const label = `${MONTH_NAMES_PT[parseInt(month, 10) - 1]}/${year}`;
         html += `<option value="${key}">${label}</option>`;
     });
-
     DOM.filterMonth.innerHTML = html;
-    DOM.filterMonth.value = state.filters.month || "";
 }
 
-function fillDropdown(element, list, defaultText, includeAllOption = true) {
-    let html = includeAllOption ? `<option value="">${defaultText}</option>` : `<option value="" disabled selected>${defaultText}</option>`;
+function fillDropdown(element, list, defaultText) {
+    let html = `<option value="">${defaultText}</option>`;
     list.forEach(item => {
         html += `<option value="${item}">${item}</option>`;
     });
@@ -249,10 +175,9 @@ function fillDropdown(element, list, defaultText, includeAllOption = true) {
 
 // Registro de Event Listeners
 function setupEventListeners() {
-    // Tema
     DOM.themeToggle.addEventListener("click", toggleTheme);
     
-    // Abas de Navegação
+    // Abas
     document.querySelectorAll(".tab-btn").forEach(btn => {
         btn.addEventListener("click", () => {
             const tab = btn.getAttribute("data-tab");
@@ -260,39 +185,44 @@ function setupEventListeners() {
         });
     });
     
-    // Filtros
-    DOM.filterMonth.addEventListener("change", (e) => {
-        state.filters.month = e.target.value;
+    // Filtros principais
+    DOM.filterMonth.addEventListener("change", () => {
+        state.filters.month = DOM.filterMonth.value;
         state.pagination.currentPage = 1;
         updateDashboard();
     });
     
-    DOM.filterStartDate.addEventListener("change", (e) => {
-        state.filters.startDate = e.target.value;
+    DOM.filterStartDate.addEventListener("change", () => {
+        state.filters.startDate = DOM.filterStartDate.value;
         state.pagination.currentPage = 1;
         updateDashboard();
     });
     
-    DOM.filterEndDate.addEventListener("change", (e) => {
-        state.filters.endDate = e.target.value;
+    DOM.filterEndDate.addEventListener("change", () => {
+        state.filters.endDate = DOM.filterEndDate.value;
         state.pagination.currentPage = 1;
         updateDashboard();
     });
     
-    DOM.filterCliente.addEventListener("change", (e) => {
-        state.filters.cliente = e.target.value;
+    DOM.filterCliente.addEventListener("change", () => {
+        state.filters.cliente = DOM.filterCliente.value;
         state.pagination.currentPage = 1;
         updateDashboard();
     });
     
-    if (DOM.btnClearFilters) DOM.btnClearFilters.addEventListener("click", clearFilters);
-    if (DOM.btnClearFiltersTable) DOM.btnClearFiltersTable.addEventListener("click", clearFilters);
+    if (DOM.btnClearFilters) {
+        DOM.btnClearFilters.addEventListener("click", clearFilters);
+    }
+    
+    if (DOM.btnClearFiltersTable) {
+        DOM.btnClearFiltersTable.addEventListener("click", clearFilters);
+    }
     
     // Paginação
     DOM.btnPrevPage.addEventListener("click", () => {
         if (state.pagination.currentPage > 1) {
             state.pagination.currentPage--;
-            renderTable(getFilteredData());
+            updateDashboard();
         }
     });
     
@@ -301,12 +231,26 @@ function setupEventListeners() {
         const maxPage = Math.ceil(filtered.length / state.pagination.itemsPerPage);
         if (state.pagination.currentPage < maxPage) {
             state.pagination.currentPage++;
-            renderTable(filtered);
+            updateDashboard();
         }
     });
     
-    // Ordenação da Tabela
-    DOM.tableHeaders.forEach(th => {
+    // Filtros de coluna da tabela (com debounce)
+    let filterTimeout;
+    document.querySelectorAll('.filters-row input').forEach(input => {
+        input.addEventListener('input', (e) => {
+            clearTimeout(filterTimeout);
+            filterTimeout = setTimeout(() => {
+                const coluna = e.target.getAttribute('data-filter');
+                state.filters[coluna] = e.target.value.trim();
+                state.pagination.currentPage = 1;
+                updateDashboard();
+            }, 300);
+        });
+    });
+    
+    // Ordenação
+    document.querySelectorAll(".orders-table th[data-sort]").forEach(th => {
         th.addEventListener("click", () => {
             const column = th.getAttribute("data-sort");
             if (state.sorting.column === column) {
@@ -316,62 +260,60 @@ function setupEventListeners() {
                 state.sorting.direction = "asc";
             }
             
-            DOM.tableHeaders.forEach(h => {
+            document.querySelectorAll(".orders-table th[data-sort]").forEach(h => {
                 h.classList.remove("sorted-asc", "sorted-desc");
             });
             th.classList.add(state.sorting.direction === "asc" ? "sorted-asc" : "sorted-desc");
             
-            renderTable(getFilteredData());
+            updateDashboard();
         });
     });
-    
 }
 
 // Alternância de Abas
 function switchTab(tab) {
     state.activeTab = tab;
     
-    // Atualizar classe ativa nos botões
     document.querySelectorAll(".tab-btn").forEach(btn => {
-        if (btn.getAttribute("data-tab") === tab) {
-            btn.classList.add("active");
-        } else {
-            btn.classList.remove("active");
-        }
+        btn.classList.toggle("active", btn.getAttribute("data-tab") === tab);
     });
     
-    // Atualizar classe ativa nos painéis
     document.querySelectorAll(".tab-panel-content").forEach(panel => {
-        const panelId = panel.getAttribute("id");
-        if (panelId === `tab-panel-${tab}`) {
-            panel.classList.add("active");
-        } else {
-            panel.classList.remove("active");
-        }
+        panel.classList.toggle("active", panel.getAttribute("id") === `tab-panel-${tab}`);
     });
     
-    // Atualizar dashboard com novas métricas, gráficos e tabelas
     updateDashboard();
 }
 
 // Limpar Filtros
 function clearFilters() {
-    DOM.filterMonth.value = "";
-    DOM.filterStartDate.value = "";
-    DOM.filterEndDate.value = "";
-    DOM.filterCliente.value = "";
-    
     state.filters = {
         month: "",
         startDate: "",
         endDate: "",
-        cliente: ""
+        cliente: "",
+        ped_id: "",
+        numero_pedido: "",
+        tipo_pedido: "",
+        desc_tipo_movimento: "",
+        volume_hectolitro: "",
+        situacao_item: "",
+        situacao_atend_item: "",
+        situacao_nf: ""
     };
     state.pagination.currentPage = 1;
+    
+    DOM.filterMonth.value = "";
+    DOM.filterStartDate.value = "";
+    DOM.filterEndDate.value = "";
+    DOM.filterCliente.value = "";
+    document.querySelectorAll('.filters-row input').forEach(input => input.value = '');
+    document.querySelectorAll(".orders-table th[data-sort]").forEach(h => h.classList.remove("sorted-asc", "sorted-desc"));
+    
     updateDashboard();
 }
 
-// Filtrar Dados da Base
+// Filtrar dados aplicando todos os critérios
 function getFilteredData() {
     return state.orders.filter(order => {
         const matchesMonth = !state.filters.month || (order.data_entrega_original && order.data_entrega_original.slice(0, 7) === state.filters.month);
@@ -379,11 +321,23 @@ function getFilteredData() {
         const matchesEndDate = !state.filters.endDate || order.data_entrega_original <= state.filters.endDate;
         const matchesCliente = !state.filters.cliente || order.cod_cliente === state.filters.cliente;
         
-        return matchesMonth && matchesStartDate && matchesEndDate && matchesCliente;
+        // Filtros de coluna da tabela
+        const matchesPedId = !state.filters.ped_id || String(order.ped_id || '').toLowerCase().includes(state.filters.ped_id.toLowerCase());
+        const matchesNumeroPedido = !state.filters.numero_pedido || String(order.numero_pedido || '').toLowerCase().includes(state.filters.numero_pedido.toLowerCase());
+        const matchesTipoPedido = !state.filters.tipo_pedido || (order.tipo_pedido || '').toLowerCase().includes(state.filters.tipo_pedido.toLowerCase());
+        const matchesDescMovimento = !state.filters.desc_tipo_movimento || (order.desc_tipo_movimento || '').toLowerCase().includes(state.filters.desc_tipo_movimento.toLowerCase());
+        const matchesVolume = !state.filters.volume_hectolitro || String(order.volume_hectolitro || '').includes(state.filters.volume_hectolitro);
+        const matchesSituacaoItem = !state.filters.situacao_item || (order.situacao_item || '').toLowerCase().includes(state.filters.situacao_item.toLowerCase());
+        const matchesSituacaoAtend = !state.filters.situacao_atend_item || (order.situacao_atend_item || '').toLowerCase().includes(state.filters.situacao_atend_item.toLowerCase());
+        const matchesSituacaoNf = !state.filters.situacao_nf || (order.situacao_nf || '').toLowerCase().includes(state.filters.situacao_nf.toLowerCase());
+        
+        return matchesMonth && matchesStartDate && matchesEndDate && matchesCliente &&
+               matchesPedId && matchesNumeroPedido && matchesTipoPedido && matchesDescMovimento &&
+               matchesVolume && matchesSituacaoItem && matchesSituacaoAtend && matchesSituacaoNf;
     });
 }
 
-// Ordenar Dados da Base
+// Ordenar dados
 function sortData(data) {
     const col = state.sorting.column;
     const dir = state.sorting.direction === "asc" ? 1 : -1;
@@ -409,7 +363,7 @@ function sortData(data) {
     });
 }
 
-// Destruir gráficos anteriores
+// Destruir gráficos antigos
 function destroyAllCharts() {
     Object.keys(charts).forEach(key => {
         if (charts[key]) {
@@ -419,27 +373,27 @@ function destroyAllCharts() {
     });
 }
 
-// Atualizar Tela Principal
+// ⭐ FUNÇÃO CENTRAL DO DASHBOARD - Tudo passa por aqui!
 function updateDashboard() {
     const filtered = getFilteredData();
+    state.pagination.totalItems = filtered.length;
     
     calculateMetrics(filtered);
     renderTable(filtered);
     renderRankingTables(filtered);
     renderCharts(filtered);
-    generateInsights(filtered);
     
     lucide.createIcons();
 }
 
-// Calcular e Exibir Métricas baseadas na aba ativa
+// Calcular métricas KPI
 function calculateMetrics(data) {
     let processedData = data;
     if (state.activeTab === "pdv") {
         const visitas = {};
         data.forEach(order => {
             const num = order.numero_pedido;
-            if (!num) return; // ignora se não tiver numero de pedido
+            if (!num) return;
             if (!visitas[num]) {
                 visitas[num] = { isOt: false, isIf: false, fake: true };
             }
@@ -456,7 +410,6 @@ function calculateMetrics(data) {
     }
     const total = processedData.length;
     
-    // KPI Cards Domínio Geral
     const kpiCard1 = document.querySelector(".kpi-otif");
     const kpiCard2 = document.querySelector(".kpi-ot");
     const kpiCard3 = document.querySelector(".kpi-if");
@@ -467,9 +420,6 @@ function calculateMetrics(data) {
         DOM.kpiOt.textContent = "0.0%";
         DOM.kpiIf.textContent = "0.0%";
         DOM.kpiTotal.textContent = "0";
-        if (DOM.kpiRevenue) DOM.kpiRevenue.textContent = "";
-        DOM.kpiLate.textContent = "0";
-        DOM.kpiIncomplete.textContent = "0";
         
         setRadialProgress(DOM.circleOtif, 0);
         setRadialProgress(DOM.circleOt, 0);
@@ -477,23 +427,11 @@ function calculateMetrics(data) {
         return;
     }
     
-    let otCount = 0;
-    let ifCount = 0;
-    let otifCount = 0;
-    let totalRevenue = 0;
-    let lateCount = 0;
-    let incompleteCount = 0;
-    
-    // Volumétricas (Hectolitros)
-    let totalVolumePedido = 0;
-    let totalVolumeEntregue = 0;
-    let otifVolume = 0;
-    let otVolume = 0;
-    let ifVolume = 0;
+    let otCount = 0, ifCount = 0, otifCount = 0;
+    let totalVolumePedido = 0, totalVolumeEntregue = 0, otifVolume = 0, otVolume = 0;
     
     processedData.forEach(order => {
-        let isOt = false;
-        let isIf = false;
+        let isOt = false, isIf = false;
         
         if (order.fake) {
             isOt = order.isOt;
@@ -504,110 +442,60 @@ function calculateMetrics(data) {
         }
         
         if (isOt) otCount++;
-        else lateCount++;
-        
         if (isIf) ifCount++;
-        else incompleteCount++;
-        
         if (isOt && isIf) otifCount++;
     });
-
+    
     data.forEach(order => {
-        // Volumetria (HL)
         const vol = parseFloat(order.volume_hectolitro) || 0;
         totalVolumePedido += vol;
         
-        // Volume entregue proporcional a quantidade entregue
         const volEntregue = isOrderIF(order) ? vol : 0;
         totalVolumeEntregue += volEntregue;
         
         if (isOrderOT(order)) otVolume += vol;
-        if (isOrderIF(order)) ifVolume += volEntregue;
         if (isOrderOT(order) && isOrderIF(order)) otifVolume += volEntregue;
     });
     
-    // Métricas Percentuais Operacionais (Baseadas em Pedidos)
     const pctOtif = (otifCount / total) * 100;
     const pctOt = (otCount / total) * 100;
     const pctIf = (ifCount / total) * 100;
     
-    // Métricas Percentuais Volumétricas (Baseadas em Hectolitros)
     const pctOtifVol = totalVolumePedido > 0 ? (otifVolume / totalVolumePedido) * 100 : 0;
     const pctOtVol = totalVolumePedido > 0 ? (otVolume / totalVolumePedido) * 100 : 0;
     const pctIfVol = totalVolumePedido > 0 ? (totalVolumeEntregue / totalVolumePedido) * 100 : 0;
     const totalVolumeCorte = totalVolumePedido - totalVolumeEntregue;
     
-    // Formatar moeda
-    const formattedRevenue = "";
-    
-    // Ajustar Layout e Títulos dos KPI Cards de acordo com a aba selecionada
     if (state.activeTab === "hl") {
-        // --- VISÃO VOLUMÉTRICA (HL) ---
         kpiCard1.querySelector("h3").textContent = "OTIF Volumétrico";
         DOM.kpiOtif.textContent = `${pctOtifVol.toFixed(1)}%`;
-        kpiCard1.querySelector(".radial-text").textContent = "Vol.";
         setRadialProgress(DOM.circleOtif, pctOtifVol);
         
         kpiCard2.querySelector("h3").textContent = "Volume Pedido";
         DOM.kpiOt.textContent = `${totalVolumePedido.toFixed(0)} HL`;
-        kpiCard2.querySelector(".radial-text").textContent = "Solic.";
-        setRadialProgress(DOM.circleOt, 100); // Fixo em 100% de volume planejado
+        setRadialProgress(DOM.circleOt, 100);
         
         kpiCard3.querySelector("h3").textContent = "Volume Entregue";
         DOM.kpiIf.textContent = `${totalVolumeEntregue.toFixed(0)} HL`;
-        kpiCard3.querySelector(".radial-text").textContent = "Realiz.";
         setRadialProgress(DOM.circleIf, pctIfVol);
         
-        // Card de volume
         kpiCard4.querySelector("h3").textContent = "Corte Volumétrico";
         DOM.kpiTotal.textContent = `${totalVolumeCorte.toFixed(1)} HL`;
-        
-        const detailsContainer = kpiCard4.querySelector("div[style*='display: flex']");
-        if (detailsContainer) {
-            detailsContainer.innerHTML = ``;
-        }
-        
-        const badgesContainer = kpiCard4.querySelector("div[style*='gap: 12px']");
-        if (badgesContainer) {
-            const lossPct = totalVolumePedido > 0 ? (totalVolumeCorte / totalVolumePedido * 100) : 0;
-            badgesContainer.innerHTML = `
-                <span class="badge badge-danger" style="padding: 2px 6px;">Perda de ${lossPct.toFixed(1)}% do HL</span>
-                <span class="badge badge-outline" style="padding: 2px 6px;">Total Pedidos: ${total}</span>
-            `;
-        }
     } else {
-        // --- VISÕES OPERACIONAIS (PDV / SKU) ---
         kpiCard1.querySelector("h3").textContent = "OTIF Global";
         DOM.kpiOtif.textContent = `${pctOtif.toFixed(1)}%`;
-        kpiCard1.querySelector(".radial-text").textContent = "OTIF";
         setRadialProgress(DOM.circleOtif, pctOtif);
         
         kpiCard2.querySelector("h3").textContent = "On-Time (No Prazo)";
         DOM.kpiOt.textContent = `${pctOt.toFixed(1)}%`;
-        kpiCard2.querySelector(".radial-text").textContent = "Prazo";
         setRadialProgress(DOM.circleOt, pctOt);
         
         kpiCard3.querySelector("h3").textContent = "In-Full (Completo)";
         DOM.kpiIf.textContent = `${pctIf.toFixed(1)}%`;
-        kpiCard3.querySelector(".radial-text").textContent = "Carga";
         setRadialProgress(DOM.circleIf, pctIf);
         
-        // Card 4: Detalhes gerais do volume
         kpiCard4.querySelector("h3").textContent = "Volume de Pedidos";
         DOM.kpiTotal.textContent = total;
-        
-        const detailsContainer = kpiCard4.querySelector("div[style*='display: flex']");
-        if (detailsContainer) {
-            detailsContainer.innerHTML = ``;
-        }
-        
-        const badgesContainer = kpiCard4.querySelector("div[style*='gap: 12px']");
-        if (badgesContainer) {
-            badgesContainer.innerHTML = `
-                <span class="badge badge-danger" style="padding: 2px 6px;"><strong id="kpi-late-value">${lateCount}</strong> atrasos</span>
-                <span class="badge badge-warning" style="padding: 2px 6px; color: #d97706; background-color: rgba(217, 119, 6, 0.15);"><strong id="kpi-incomplete-value">${incompleteCount}</strong> cortes</span>
-            `;
-        }
     }
 }
 
@@ -620,7 +508,7 @@ function setRadialProgress(circleElement, percentage) {
     circleElement.style.strokeDashoffset = offset;
 }
 
-// Renderizar Tabela Geral de Pedidos (Rodapé)
+// Renderizar tabela de pedidos
 function renderTable(data) {
     const sorted = sortData(data);
     const pag = state.pagination;
@@ -641,7 +529,7 @@ function renderTable(data) {
     DOM.tableInfo.textContent = totalItems > 0 
         ? `Exibindo ${startIndex + 1}-${endIndex} de ${totalItems} pedidos` 
         : "Nenhum pedido encontrado";
-        
+    
     let html = "";
     if (paginatedItems.length === 0) {
         html = `<tr><td colspan="11" style="text-align: center; color: var(--text-muted); padding: 40px;">Nenhum pedido atende aos filtros aplicados.</td></tr>`;
@@ -657,7 +545,6 @@ function renderTable(data) {
             } else {
                 let badgeClass = "badge-danger";
                 let text = "FALHA";
-                
                 if (isOt && !isIf) {
                     badgeClass = "badge-warning";
                     text = "Apenas OT";
@@ -665,12 +552,11 @@ function renderTable(data) {
                     badgeClass = "badge-warning";
                     text = "Apenas IF";
                 }
-                
                 statusHtml = `<span class="badge ${badgeClass}">${text}</span>`;
             }
             
-            const formattedDateOriginal = order.data_entrega_original ? formatDate(order.data_entrega_original) : '-';
-            const formattedDateEntrega = order.data_entrega ? formatDate(order.data_entrega) : '-';
+            const formattedDateOriginal = order.data_entrega_original ? formatarData(order.data_entrega_original) : '-';
+            const formattedDateEntrega = order.data_entrega ? formatarData(order.data_entrega) : '-';
             
             html += `
                 <tr>
@@ -678,14 +564,10 @@ function renderTable(data) {
                     <td>${order.numero_pedido || '-'}</td>
                     <td>${order.cod_cliente || '-'}</td>
                     <td>${formattedDateOriginal}</td>
-                    <td>
-                        <span style="color: ${isOt ? 'inherit' : 'var(--danger)'}">
-                            ${formattedDateEntrega}
-                        </span>
-                    </td>
+                    <td style="color: ${isOt ? 'inherit' : 'var(--danger)'}">${formattedDateEntrega}</td>
                     <td>${order.tipo_pedido || '-'}</td>
                     <td>${order.desc_tipo_movimento || '-'}</td>
-                    <td>${parseFloat(order.volume_hectolitro || 0).toFixed(2)}</td>
+                    <td>${parseFloat(order.volume_hectolitro || 0).toFixed(2)} HL</td>
                     <td>${order.situacao_item || '-'}</td>
                     <td>${order.situacao_atend_item || '-'}</td>
                     <td>${order.situacao_nf || '-'}</td>
@@ -695,14 +577,12 @@ function renderTable(data) {
     }
     
     DOM.tableBody.innerHTML = html;
-    lucide.createIcons();
 }
 
-// Renderizar Tabelas de Classificação/Ranking por Aba
+// Renderizar tabelas de ranking
 function renderRankingTables(data) {
     if (data.length === 0) return;
     
-    // --- 1. Aba PDV: Ranking de Clientes ---
     if (state.activeTab === "pdv") {
         const pdvAgg = {};
         const visitasMap = {};
@@ -734,7 +614,6 @@ function renderRankingTables(data) {
             if (v.isOt && v.isIf) pdvAgg[name].otif++;
         });
         
-        // Sort clients by OTIF % desc, then total orders desc
         const sortedPdvs = Object.keys(pdvAgg).map(name => ({
             name,
             total: pdvAgg[name].total,
@@ -753,29 +632,21 @@ function renderRankingTables(data) {
                     <td>${p.total}</td>
                     <td>${p.total - p.ot}</td>
                     <td>${p.corte}</td>
-                    <td>
-                        <span class="ranking-value ${isSuccess ? 'success' : 'danger'}">
-                            ${p.pct.toFixed(1)}%
-                        </span>
-                    </td>
+                    <td><span class="ranking-value ${isSuccess ? 'success' : 'danger'}">${p.pct.toFixed(1)}%</span></td>
                 </tr>
             `;
         });
         DOM.rankingPdvBody.innerHTML = html;
     }
     
-    // --- 2. Aba HL: Rankings Volumétricos de Clientes (HL) ---
     if (state.activeTab === "hl") {
         const clientAgg = {};
-        
         data.forEach(order => {
             const cli = order.cod_cliente || 'Desconhecido';
             const vol = parseFloat(order.volume_hectolitro) || 0;
             const volEntregue = isOrderIF(order) ? vol : 0;
-            
             const otifVol = (isOrderOT(order) && isOrderIF(order)) ? volEntregue : 0;
             
-            // Clientes
             if (!clientAgg[cli]) {
                 clientAgg[cli] = { totalVol: 0, entregueVol: 0, otifVol: 0 };
             }
@@ -784,9 +655,6 @@ function renderRankingTables(data) {
             clientAgg[cli].otifVol += otifVol;
         });
         
-        if (DOM.rankingHlCarrierBody) DOM.rankingHlCarrierBody.innerHTML = "";
-        
-        // Renderizar Clientes HL
         const sortedClients = Object.keys(clientAgg).map(name => {
             const d = clientAgg[name];
             return {
@@ -795,7 +663,7 @@ function renderRankingTables(data) {
                 entregueVol: d.entregueVol,
                 otifVolPct: d.totalVol > 0 ? (d.otifVol / d.totalVol) * 100 : 0
             };
-        }).sort((a, b) => b.totalVol - a.totalVol); // Ordenar por maior volume movimentado
+        }).sort((a, b) => b.totalVol - a.totalVol);
         
         let htmlClient = "";
         sortedClients.forEach((cl, idx) => {
@@ -805,18 +673,13 @@ function renderRankingTables(data) {
                     <td><span class="ranking-rank">${idx + 1}</span><strong>${cl.name}</strong></td>
                     <td>${cl.totalVol.toFixed(1)} HL</td>
                     <td>${cl.entregueVol.toFixed(1)} HL</td>
-                    <td>
-                        <span class="ranking-value ${isSuccess ? 'success' : 'danger'}">
-                            ${cl.otifVolPct.toFixed(1)}%
-                        </span>
-                    </td>
+                    <td><span class="ranking-value ${isSuccess ? 'success' : 'danger'}">${cl.otifVolPct.toFixed(1)}%</span></td>
                 </tr>
             `;
         });
         if (DOM.rankingHlClientBody) DOM.rankingHlClientBody.innerHTML = htmlClient;
     }
     
-    // --- 3. Aba SKU: Rankings de Tipo de Movimento ---
     if (state.activeTab === "sku") {
         const skuAgg = {};
         data.forEach(order => {
@@ -853,11 +716,7 @@ function renderRankingTables(data) {
                     <td>${s.total}</td>
                     <td style="color: ${s.cutRate > 0 ? 'var(--danger)' : 'inherit'}">${s.cutRate.toFixed(1)}%</td>
                     <td>${s.ifPct.toFixed(1)}%</td>
-                    <td>
-                        <span class="ranking-value ${isSuccess ? 'success' : 'danger'}">
-                            ${s.otifPct.toFixed(1)}%
-                        </span>
-                    </td>
+                    <td><span class="ranking-value ${isSuccess ? 'success' : 'danger'}">${s.otifPct.toFixed(1)}%</span></td>
                 </tr>
             `;
         });
@@ -865,19 +724,18 @@ function renderRankingTables(data) {
     }
 }
 
-// Renderização dos Gráficos com base na Aba Ativa
+// ⭐ Renderizar gráficos - Aqui é onde os gráficos ganham vida!
 function renderCharts(data) {
     const isDark = state.theme === "dark";
     const gridColor = isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)";
     const textColor = isDark ? "#94a3b8" : "#475569";
     const labelColor = isDark ? "#f8fafc" : "#0f172a";
     
-    // Limpar todos os gráficos primeiro para evitar duplicidades
     destroyAllCharts();
     
     if (data.length === 0) return;
     
-    // Agrupamento Semanal Geral
+    // Agrupar dados por semana
     const weeklyData = {};
     data.forEach(order => {
         const dateObj = new Date(order.data_entrega_original || order.data_entrega || new Date());
@@ -896,7 +754,6 @@ function renderCharts(data) {
         if (isIf) weeklyData[label].if++;
         if (isOt && isIf) weeklyData[label].otif++;
         
-        // Volumetria (HL)
         const vol = parseFloat(order.volume_hectolitro) || 0;
         weeklyData[label].volumePedido += vol;
         const volEntregue = isIf ? vol : 0;
@@ -908,7 +765,7 @@ function renderCharts(data) {
     
     const weekLabels = Object.keys(weeklyData).sort();
     
-    // --- RENDERING DA ABA 1: PDV ---
+    // ABA PDV
     if (state.activeTab === "pdv") {
         const trendOtif = [];
         const trendOt = [];
@@ -921,7 +778,6 @@ function renderCharts(data) {
             trendIf.push(((d.if / d.total) * 100).toFixed(1));
         });
         
-        // Gráfico 1.1: Evolução Semanal de Pedidos
         const ctxTrend = document.getElementById("chart-trend-pdv").getContext("2d");
         charts.trendPdv = new Chart(ctxTrend, {
             type: "line",
@@ -970,7 +826,6 @@ function renderCharts(data) {
             }
         });
         
-        // Gráfico 1.2: OTIF por Cliente
         const clientOtif = {};
         data.forEach(order => {
             const c = order.cod_cliente || 'Desconhecido';
@@ -1007,7 +862,6 @@ function renderCharts(data) {
             }
         });
         
-        // Gráfico 1.3: Causa de Falhas nos PDVs
         const clientFailures = {};
         data.forEach(order => {
             const isOt = isOrderOT(order);
@@ -1038,7 +892,7 @@ function renderCharts(data) {
         });
     }
     
-    // --- RENDERING DA ABA 2: HL (Hectolitros) ---
+    // ABA HL
     if (state.activeTab === "hl") {
         const trendHlPed = [];
         const trendHlEnt = [];
@@ -1049,7 +903,6 @@ function renderCharts(data) {
             trendHlEnt.push(d.volumeEntregue.toFixed(1));
         });
         
-        // Gráfico 2.1: Volume Semanal (Hectolitros)
         const ctxHlTrend = document.getElementById("chart-trend-hl").getContext("2d");
         charts.trendHl = new Chart(ctxHlTrend, {
             type: "bar",
@@ -1087,7 +940,6 @@ function renderCharts(data) {
             }
         });
         
-        // Gráfico 2.2: HL Delivered por Tipo de Movimento
         const catHl = {};
         data.forEach(order => {
             const cat = order.desc_tipo_movimento || 'Desconhecido';
@@ -1119,9 +971,8 @@ function renderCharts(data) {
         });
     }
     
-    // --- RENDERING DA ABA 3: SKU ---
+    // ABA SKU
     if (state.activeTab === "sku") {
-        // Agrupamento por Tipo de Movimento
         const catAgg = {};
         data.forEach(order => {
             const cat = order.desc_tipo_movimento || 'Desconhecido';
@@ -1137,7 +988,6 @@ function renderCharts(data) {
         
         const categories = Object.keys(catAgg);
         
-        // Gráfico 3.1: Share de atendimento volumétrico / Grau de Atendimento (IF %)
         const ifRatios = categories.map(cat => {
             const d = catAgg[cat];
             return ((d.ifCount / d.total) * 100).toFixed(1);
@@ -1168,7 +1018,6 @@ function renderCharts(data) {
             }
         });
         
-        // Gráfico 3.2: OTIF % por Categoria
         const catOtifValues = categories.map(cat => ((catAgg[cat].otif / catAgg[cat].total) * 100).toFixed(1));
         
         const ctxSkuOtif = document.getElementById("chart-sku-otif").getContext("2d");
@@ -1197,7 +1046,7 @@ function renderCharts(data) {
     }
 }
 
-// Helpers para data
+// Helpers
 function getWeekNumber(d) {
     d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
     d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
@@ -1206,269 +1055,6 @@ function getWeekNumber(d) {
     return weekNo;
 }
 
-// const supabaseUrl = 'https://eqvlivvaqnadasfchnzp.supabase.co';
-// const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxdmxpdnZhcW5hZGFzZmNobnpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MDA4NDAsImV4cCI6MjA5ODk3Njg0MH0.szN2eZVtOi8-MVXgvgy_UZRJFA6L0UDpy_t0b9nsgKo';
-// const banco = supabase.createClient(supabaseUrl, supabaseKey);
-
-// VARIÁVEIS DE CONTROLE DA PAGINAÇÃO E FILTROS
-let paginaAtual = 1;
-const registrosPorPagina = 10;
-
-// Estado global dos filtros e ordenação
-let filtrosColunas = {};
-let filtroDataInicio = '';
-let filtroDataFim = '';
-let ordenacaoAtual = { coluna: 'ped_id', ascendente: true }; // Ordenação padrão inicial
-
-// Inicialização dos eventos assim que a página carregar
-document.addEventListener('DOMContentLoaded', () => {
-    inicializarEventosFiltros();
-    inicializarEventosOrdenacao();
-    inicializarEventosPaginacao();
-    carregarPedidosReais(); // Primeira carga de dados
-});
-
-// 1. CAPTURA DOS FILTROS POR COLUNA E DATAS
-function inicializarEventosFiltros() {
-    // Inputs das colunas (Debounce de 400ms)
-    let timeoutBusca;
-    document.querySelectorAll('.filters-row input').forEach(input => {
-        input.addEventListener('input', (e) => {
-            clearTimeout(timeoutBusca);
-            timeoutBusca = setTimeout(() => {
-                const coluna = e.target.getAttribute('data-filter');
-                const valor = e.target.value.trim();
-
-                if (valor) {
-                    filtrosColunas[coluna] = valor;
-                } else {
-                    delete filtrosColunas[coluna];
-                }
-                
-                paginaAtual = 1;
-                carregarPedidosReais();
-            }, 400);
-        });
-    });
-
-    // Inputs de data global (Mudamos para 'input' para garantir captura em qualquer navegador)
-    const dateStart = document.getElementById('date-start');
-    const dateEnd = document.getElementById('date-end');
-
-    if (dateStart) {
-        dateStart.addEventListener('input', (e) => {
-            filtroDataInicio = e.target.value;
-            console.log("📅 Data Início Capturada:", filtroDataInicio); // Verifique no F12
-            paginaAtual = 1;
-            carregarPedidosReais();
-        });
-    }
-
-    if (dateEnd) {
-        dateEnd.addEventListener('input', (e) => {
-            filtroDataFim = e.target.value;
-            console.log("📅 Data Fim Capturada:", filtroDataFim); // Verifique no F12
-            paginaAtual = 1;
-            carregarPedidosReais();
-        });
-    }
-
-    // Botão Limpar Filtros
-    const btnClear = document.getElementById('btn-clear-filters');
-    if (btnClear) {
-        btnClear.addEventListener('click', () => {
-            if (dateStart) dateStart.value = '';
-            if (dateEnd) dateEnd.value = '';
-            document.querySelectorAll('.filters-row input').forEach(input => input.value = '');
-            
-            filtrosColunas = {};
-            filtroDataInicio = '';
-            filtroDataFim = '';
-            ordenacaoAtual = { coluna: 'ped_id', ascendente: true };
-
-            document.querySelectorAll('.sortable').forEach(h => h.classList.remove('asc', 'desc'));
-
-            paginaAtual = 1;
-            carregarPedidosReais();
-        });
-    }
-}
-
-// 2. CAPTURA DOS CLIQUES DE ORDENAÇÃO
-function inicializarEventosOrdenacao() {
-    document.querySelectorAll('.sortable').forEach(header => {
-        header.addEventListener('click', () => {
-            let coluna = header.getAttribute('data-sort');
-            
-            // Correção caso o nome do atributo HTML divirja da coluna do banco
-            if (coluna === 'num_pedido') coluna = 'numero_pedido'; 
-
-            let ascendente = true;
-
-            if (ordenacaoAtual.coluna === coluna && ordenacaoAtual.ascendente === true) {
-                ascendente = false;
-            }
-
-            ordenacaoAtual = { coluna, ascendente };
-
-            // Atualiza classes visuais do CSS
-            document.querySelectorAll('.sortable').forEach(h => h.classList.remove('asc', 'desc'));
-            header.classList.add(ascendente ? 'asc' : 'desc');
-
-            carregarPedidosReais();
-        });
-    });
-}
-
-// 3. EVENTOS DE PAGINAÇÃO SEPARADOS
-function inicializarEventosPaginacao() {
-    document.getElementById('btn-prev-page').addEventListener('click', () => {
-        if (paginaAtual > 1) {
-            paginaAtual--;
-            carregarPedidosReais();
-        }
-    });
-
-    document.getElementById('btn-next-page').addEventListener('click', () => {
-        paginaAtual++;
-        carregarPedidosReais();
-    });
-}
-
-// 4. FUNÇÃO PRINCIPAL (CONSTRÓI A QUERY DINÂMICA DO SUPABASE)
-async function carregarPedidosReais() {
-    const tbody = document.getElementById('table-body');
-    const infoTexto = document.getElementById('table-info');
-    const indicator = document.getElementById('current-page-indicator');
-
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;">Carregando pedidos...</td></tr>';
-
-    const deOnde = (paginaAtual - 1) * registrosPorPagina;
-    const ateOnde = deOnde + registrosPorPagina - 1;
-
-    // Inicia a query base
-    let query = banco
-        .from('Pedidos')
-        .select(`
-            ped_id, 
-            numero_pedido, 
-            cod_cliente, 
-            data_entrega_original, 
-            data_entrega, 
-            tipo_pedido, 
-            desc_tipo_movimento, 
-            volume_hectolitro, 
-            situacao_item, 
-            situacao_atend_item, 
-            situacao_nf
-        `, { count: 'exact' });
-
-    // Injeta dinamicamente os filtros por coluna de texto aplicados
-    // Injeta dinamicamente os filtros por coluna de texto ou número
-    Object.keys(filtrosColunas).forEach(coluna => {
-        let campoBanco = coluna;
-        if (coluna === 'num_pedido') campoBanco = 'numero_pedido'; // Mapeamento correto
-
-        const valor = filtrosColunas[coluna];
-        
-        // Lista de colunas que são NÚMEROS (bigint / integer) no seu banco de dados
-        // Adicione aqui 'numero_pedido' ou 'cod_cliente' se eles também forem números puros no banco
-        const colunasNumericas = ['ped_id', 'numero_pedido', 'cod_cliente'];
-
-        if (colunasNumericas.includes(campoBanco)) {
-            // Se for uma coluna numérica e o usuário digitou um número válido, usa .eq()
-            if (!isNaN(valor) && valor.trim() !== '') {
-                query = query.eq(campoBanco, parseInt(valor));
-            } else {
-                // Se o usuário digitou texto onde deveria ser número, forçamos um resultado vazio 
-                // para não quebrar a query com erro de sintaxe do Postgres
-                query = query.eq(campoBanco, -1); 
-            }
-        } else {
-            // Se for texto de verdade (ex: tipo_pedido, situacao_nf), usa ilike normalmente
-            query = query.ilike(campoBanco, `%${valor}%`);
-        }
-    });
-
-    // Injeta filtros de Período de Datas (Baseado estritamente na Data Entrega Original)
-    if (filtroDataInicio) {
-        // gte = Greater Than or Equal (Maior ou igual à data de início)
-        query = query.gte('data_entrega_original', filtroDataInicio); 
-    }
-    if (filtroDataFim) {
-        // lte = Less Than or Equal (Menor ou igual à data de fim)
-        query = query.lte('data_entrega_original', filtroDataFim); 
-    }
-
-    // Injeta a Ordenação ativa do sistema
-    query = query.order(ordenacaoAtual.coluna, { ascending: ordenacaoAtual.ascendente });
-
-    // Aplica o Range da paginação por fim
-    const { data: pedidos, error, count } = await query.range(deOnde, ateOnde);
-
-    if (error) {
-        console.error('Erro ao buscar dados:', error.message);
-        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; color:red;">Erro: ${error.message}</td></tr>`;
-        return;
-    }
-
-    if (!pedidos || pedidos.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;">Nenhum pedido encontrado com os parâmetros informados.</td></tr>';
-        infoTexto.innerText = `Exibindo 0 de 0 pedidos`;
-        indicator.innerText = `1 de 1`;
-        document.getElementById('btn-prev-page').disabled = true;
-        document.getElementById('btn-next-page').disabled = true;
-        return;
-    }
-
-    tbody.innerHTML = '';
-
-    pedidos.forEach(pedido => {
-        const linha = document.createElement('tr');
-        linha.innerHTML = `
-            <td><strong>${pedido.ped_id}</strong></td>
-            <td>${pedido.numero_pedido || '-'}</td>
-            <td>${pedido.cod_cliente || '-'}</td>
-            <td>${formatarData(pedido.data_entrega_original)}</td>
-            <td>${formatarData(pedido.data_entrega)}</td>
-            <td>${pedido.tipo_pedido || '-'}</td>
-            <td>${pedido.desc_tipo_movimento || '-'}</td>
-            <td>${pedido.volume_hectolitro ? pedido.volume_hectolitro : '0'} HL</td>
-            <td><span class="status-badge">${pedido.situacao_item || '-'}</span></td>
-            <td>${pedido.situacao_atend_item || '-'}</td>
-            <td>${pedido.situacao_nf || '-'}</td>
-        `;
-        tbody.appendChild(linha);
-    });
-
-    // ATUALIZA OS TEXTOS DO RODAPÉ DA TABELA
-    const totalPaginas = Math.ceil(count / registrosPorPagina) || 1;
-            
-    infoTexto.innerText = `Exibindo ${deOnde + 1}-${deOnde + pedidos.length} de ${count} pedidos`;
-    indicator.innerText = `${paginaAtual} de ${totalPaginas}`;
-
-    document.getElementById('btn-prev-page').disabled = (paginaAtual === 1);
-    document.getElementById('btn-next-page').disabled = (paginaAtual === totalPages);
-
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-}
-
-// Garanta que a sua função formatarData(data) continue declarada no seu script externo
-
-// CONFIGURAÇÃO DOS EVENTOS DE CLIQUE DOS BOTÕES
-document.getElementById('btn-prev-page').addEventListener('click', () => {
-    if (paginaAtual > 1) {
-        paginaAtual--;
-        carregarPedidosReais();
-    }
-});
-
-document.getElementById('btn-next-page').addEventListener('click', () => {
-    paginaAtual++;
-    carregarPedidosReais();
-});
-
-// Função auxiliar de tratamento de data
 function formatarData(dataString) {
     if (!dataString) return '-';
     try {
@@ -1480,19 +1066,16 @@ function formatarData(dataString) {
     }
 }
 
-// Inicia o app carregando a primeira página
-document.addEventListener('DOMContentLoaded', carregarPedidosReais);
+// === IMPORTAÇÃO DE EXCEL ===
 
-// Variável global para controle dos dados
 let dadosProntosParaEnviar = [];
 
-// 1. FUNÇÃO DE LIMPEZA DO NOME DAS COLUNAS
 function limparNomeColuna(nome) {
     if (!nome) return 'coluna_sem_nome';
     let novoNome = nome.toString().trim().toLowerCase();
-    novoNome = novoNome.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Remove acentos
-    novoNome = novoNome.replace(/\s+/g, '_'); // Espaços para _
-    novoNome = novoNome.replace(/[^a-z0-9_]/g, ''); // Remove caracteres especiais
+    novoNome = novoNome.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    novoNome = novoNome.replace(/\s+/g, '_');
+    novoNome = novoNome.replace(/[^a-z0-9_]/g, '');
     return novoNome;
 }
 
@@ -1500,7 +1083,6 @@ document.getElementById('btn-importar').addEventListener('click', function() {
     document.getElementById('excel-file-input').click();
 });
 
-// 2. PROCESSO AUTOMÁTICO: SELECIONOU, PROCESSA E ENVIA DIRETO
 document.getElementById('excel-file-input').addEventListener('change', async function(e) {
     const file = e.target.files[0];
     const statusDiv = document.getElementById('import-status');
@@ -1508,17 +1090,14 @@ document.getElementById('excel-file-input').addEventListener('change', async fun
     const progressBar = document.getElementById('progress-bar');
     const progressPercentage = document.getElementById('progress-percentage');
     
-    // Pegamos o seu botão de estilo para poder desativá-lo durante o envio
     const btnVisual = document.getElementById('btn-importar');
     const inputArquivo = this;
     
     if (!file) return;
 
-    // Desativa o botão visual e o input para evitar cliques duplos
     btnVisual.disabled = true;
     inputArquivo.disabled = true;
 
-    // Exibe e reseta a barra de progresso
     progressContainer.style.display = "block";
     progressBar.style.width = "0%";
     progressBar.style.backgroundColor = "#24b47e"; 
@@ -1526,7 +1105,6 @@ document.getElementById('excel-file-input').addEventListener('change', async fun
     statusDiv.innerText = "Conectando ao banco...";
 
     try {
-        // --- PASSO A: BUSCAR COLUNAS EXISTENTES NO SUPABASE ---
         const { data: testeEstrutura, error: erroEstrutura } = await banco
             .from('Pedidos')
             .select('*')
@@ -1548,7 +1126,6 @@ document.getElementById('excel-file-input').addEventListener('change', async fun
 
         statusDiv.innerText = "Lendo arquivo...";
 
-        // --- PASSO B: LEITURA DO ARQUIVO ---
         const reader = new FileReader();
         
         reader.onload = async function(evt) {
@@ -1568,7 +1145,6 @@ document.getElementById('excel-file-input').addEventListener('change', async fun
                 dadosProntosParaEnviar = [];
                 const totalLinhas = matrizDados.length;
 
-                // --- PASSO C: PROCESSAMENTO E FILTRO ---
                 for (let i = 1; i < totalLinhas; i++) {
                     const linhaAtual = matrizDados[i];
                     if (!linhaAtual || linhaAtual.length === 0) continue;
@@ -1592,7 +1168,6 @@ document.getElementById('excel-file-input').addEventListener('change', async fun
                     }
                 }
 
-                // --- PASSO D: ENVIO DIRETO EM LOTES ---
                 const tamanhoDoLote = 1000;
                 const totalRegistros = dadosProntosParaEnviar.length;
 
@@ -1615,15 +1190,14 @@ document.getElementById('excel-file-input').addEventListener('change', async fun
                     await new Promise(resolve => setTimeout(resolve, 40));
                 }
 
-                // SUCESSO COLETIVO
                 statusDiv.innerHTML = "🎉 Planilha importada com sucesso!";
                 inputArquivo.value = ""; 
                 
-                // Libera o botão visual novamente
                 btnVisual.disabled = false;
                 inputArquivo.disabled = false;
                 
-                if (typeof carregarPedidosReais === "function") carregarPedidosReais();
+                // Recarregar dados após importação
+                await loadInitialData();
 
             } catch (erroInterno) {
                 console.error(erroInterno);
