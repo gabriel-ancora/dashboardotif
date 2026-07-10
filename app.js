@@ -1,13 +1,29 @@
+// ⚠️ IMPORTANTE: Substitua pela sua chave real do Supabase
 const supabaseUrl = 'https://eqvlivvaqnadasfchnzp.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxdmxpdnZhcW5hZGFzZmNobnpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MDA4NDAsImV4cCI6MjA5ODk3Njg0MH0.szN2eZVtOi8-MV[...]
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxdmxpdnZhcW5hZGFzZmNobnpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MDA4NDAsImV4cCI6MjA5ODk3Njg0MH0.szN2eZVtOi8-MVOghTMhWtx_sG0zGmC12EJ7NnQvVkE';
 const banco = supabase.createClient(supabaseUrl, supabaseKey);
 
-// Funções de validação de regra de negócio OTIF
+// ✅ FUNÇÕES DE VALIDAÇÃO COM TRATAMENTO DE ERRO
+function isValidDate(dateStr) {
+    if (!dateStr || typeof dateStr !== 'string') return false;
+    const date = new Date(dateStr);
+    return !isNaN(date.getTime());
+}
+
 function isOrderOT(order) {
     if (!order.data_entrega || !order.data_entrega_original) return false;
-    const dtEntrega = new Date(order.data_entrega).toISOString().split('T')[0];
-    const dtOriginal = new Date(order.data_entrega_original).toISOString().split('T')[0];
-    return dtEntrega <= dtOriginal;
+    
+    // Validar datas antes de processar
+    if (!isValidDate(order.data_entrega) || !isValidDate(order.data_entrega_original)) return false;
+    
+    try {
+        const dtEntrega = new Date(order.data_entrega).toISOString().split('T')[0];
+        const dtOriginal = new Date(order.data_entrega_original).toISOString().split('T')[0];
+        return dtEntrega <= dtOriginal;
+    } catch (e) {
+        console.warn('⚠️ Erro ao comparar datas:', order.ped_id, e.message);
+        return false;
+    }
 }
 
 function isOrderIF(order) {
@@ -102,10 +118,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 // Carregar Tema
 function loadTheme() {
-    const savedTheme = localStorage.getItem("otif-theme") || "dark";
-    state.theme = savedTheme;
-    document.documentElement.setAttribute("data-theme", savedTheme);
-    updateThemeIcon();
+    try {
+        const savedTheme = localStorage.getItem("otif-theme") || "dark";
+        state.theme = savedTheme;
+        document.documentElement.setAttribute("data-theme", savedTheme);
+        updateThemeIcon();
+    } catch (e) {
+        console.warn('⚠️ localStorage bloqueado:', e.message);
+        state.theme = "dark";
+        updateThemeIcon();
+    }
 }
 
 function updateThemeIcon() {
@@ -120,7 +142,11 @@ function updateThemeIcon() {
 function toggleTheme() {
     state.theme = state.theme === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", state.theme);
-    localStorage.setItem("otif-theme", state.theme);
+    try {
+        localStorage.setItem("otif-theme", state.theme);
+    } catch (e) {
+        console.warn('⚠️ Não foi possível salvar tema:', e.message);
+    }
     updateThemeIcon();
     renderCharts(getFilteredData());
 }
@@ -147,7 +173,7 @@ function populateFilterDropdowns() {
     fillDropdown(DOM.filterCliente, clientes, "Todos os Clientes");
     
     const monthKeys = [...new Set(state.orders
-        .filter(o => o.data_entrega_original)
+        .filter(o => o.data_entrega_original && isValidDate(o.data_entrega_original))
         .map(o => o.data_entrega_original.slice(0, 7))
     )].sort().reverse();
     
@@ -317,8 +343,8 @@ function clearFilters() {
 function getFilteredData() {
     return state.orders.filter(order => {
         const matchesMonth = !state.filters.month || (order.data_entrega_original && order.data_entrega_original.slice(0, 7) === state.filters.month);
-        const matchesStartDate = !state.filters.startDate || order.data_entrega_original >= state.filters.startDate;
-        const matchesEndDate = !state.filters.endDate || order.data_entrega_original <= state.filters.endDate;
+        const matchesStartDate = !state.filters.startDate || (order.data_entrega_original && order.data_entrega_original >= state.filters.startDate);
+        const matchesEndDate = !state.filters.endDate || (order.data_entrega_original && order.data_entrega_original <= state.filters.endDate);
         const matchesCliente = !state.filters.cliente || order.cod_cliente === state.filters.cliente;
         
         // Filtros de coluna da tabela
@@ -738,7 +764,10 @@ function renderCharts(data) {
     // Agrupar dados por semana
     const weeklyData = {};
     data.forEach(order => {
-        const dateObj = new Date(order.data_entrega_original || order.data_entrega || new Date());
+        const dateStr = order.data_entrega_original || order.data_entrega;
+        if (!dateStr || !isValidDate(dateStr)) return;
+        
+        const dateObj = new Date(dateStr);
         const weekNum = getWeekNumber(dateObj);
         const label = `Semana ${weekNum}`;
         
@@ -773,9 +802,9 @@ function renderCharts(data) {
         
         weekLabels.forEach(w => {
             const d = weeklyData[w];
-            trendOtif.push(((d.otif / d.total) * 100).toFixed(1));
-            trendOt.push(((d.ot / d.total) * 100).toFixed(1));
-            trendIf.push(((d.if / d.total) * 100).toFixed(1));
+            trendOtif.push(d.total > 0 ? ((d.otif / d.total) * 100).toFixed(1) : 0);
+            trendOt.push(d.total > 0 ? ((d.ot / d.total) * 100).toFixed(1) : 0);
+            trendIf.push(d.total > 0 ? ((d.if / d.total) * 100).toFixed(1) : 0);
         });
         
         const ctxTrend = document.getElementById("chart-trend-pdv").getContext("2d");
@@ -836,7 +865,7 @@ function renderCharts(data) {
             }
         });
         const clientNames = Object.keys(clientOtif);
-        const clientValues = clientNames.map(n => ((clientOtif[n].otif / clientOtif[n].total) * 100).toFixed(1));
+        const clientValues = clientNames.map(n => clientOtif[n].total > 0 ? ((clientOtif[n].otif / clientOtif[n].total) * 100).toFixed(1) : 0);
         
         const ctxClientOtif = document.getElementById("chart-pdv-otif").getContext("2d");
         charts.pdvOtif = new Chart(ctxClientOtif, {
@@ -990,7 +1019,7 @@ function renderCharts(data) {
         
         const ifRatios = categories.map(cat => {
             const d = catAgg[cat];
-            return ((d.ifCount / d.total) * 100).toFixed(1);
+            return d.total > 0 ? ((d.ifCount / d.total) * 100).toFixed(1) : 0;
         });
         
         const ctxSkuShare = document.getElementById("chart-sku-share").getContext("2d");
@@ -1018,7 +1047,7 @@ function renderCharts(data) {
             }
         });
         
-        const catOtifValues = categories.map(cat => ((catAgg[cat].otif / catAgg[cat].total) * 100).toFixed(1));
+        const catOtifValues = categories.map(cat => catAgg[cat].total > 0 ? ((catAgg[cat].otif / catAgg[cat].total) * 100).toFixed(1) : 0);
         
         const ctxSkuOtif = document.getElementById("chart-sku-otif").getContext("2d");
         charts.skuOtif = new Chart(ctxSkuOtif, {
@@ -1057,9 +1086,9 @@ function getWeekNumber(d) {
 
 function formatarData(dataString) {
     if (!dataString) return '-';
+    if (!isValidDate(dataString)) return dataString;
     try {
         const data = new Date(dataString);
-        if (isNaN(data.getTime())) return dataString;
         return data.toLocaleDateString('pt-BR');
     } catch (e) {
         return dataString;
