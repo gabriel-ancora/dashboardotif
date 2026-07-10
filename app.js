@@ -151,12 +151,34 @@ function toggleTheme() {
     renderCharts(getFilteredData());
 }
 
-// Carregar dados iniciais do Supabase
+// Carregar dados iniciais do Supabase com paginação para todos os registros
 async function loadInitialData() {
     try {
-        const { data, error } = await banco.from('Pedidos').select('*');
-        if (error) throw error;
-        state.orders = data || [];
+        let allData = [];
+        let page = 0;
+        const pageSize = 1000;
+        let hasMore = true;
+
+        console.log('📥 Iniciando carregamento de dados do Supabase...');
+
+        while (hasMore) {
+            const { data, error } = await banco
+                .from('Pedidos')
+                .select('*')
+                .range(page * pageSize, (page + 1) * pageSize - 1);
+
+            if (error) throw error;
+            
+            if (!data || data.length === 0) {
+                hasMore = false;
+            } else {
+                allData = allData.concat(data);
+                console.log(`📥 Carregada página ${page + 1}: ${data.length} registros (Total: ${allData.length})`);
+                page++;
+            }
+        }
+
+        state.orders = allData;
         console.log(`✅ Carregados ${state.orders.length} pedidos do banco`);
     } catch (error) {
         console.warn('⚠️ Erro ao carregar dados:', error.message);
