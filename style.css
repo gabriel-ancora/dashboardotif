@@ -560,6 +560,106 @@ header {
     background-color: rgba(99, 102, 241, 0.02);
 }
 
+/* Controles de Filtro da Lista (período + limpar filtros) */
+.table-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.date-range-filter {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: var(--border-radius-sm);
+    padding: 6px 14px;
+}
+
+.date-range-filter label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.date-range-filter span {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.filter-input-date {
+    padding: 8px 10px;
+    border-radius: 6px;
+    background-color: transparent;
+    border: 1px solid var(--input-border);
+    color: var(--input-text);
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+    transition: var(--transition);
+    color-scheme: dark;
+}
+
+[data-theme="light"] .filter-input-date {
+    color-scheme: light;
+}
+
+.filter-input-date:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+#btn-clear-filters-table {
+    display: inline-flex;
+    align-items: center;
+    padding: 9px 16px;
+    white-space: nowrap;
+}
+
+/* Linha de filtros por coluna dentro da tabela */
+.filters-row th {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-color);
+    cursor: default;
+}
+
+.filters-row input[data-filter] {
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 6px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--input-border);
+    color: var(--input-text);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    outline: none;
+    transition: var(--transition);
+}
+
+.filters-row input[data-filter]::placeholder {
+    color: var(--text-muted);
+}
+
+.filters-row input[data-filter]:focus {
+    border-color: var(--primary);
+    background-color: var(--bg-secondary);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.filters-row th:not(:has(input)) {
+    color: var(--text-muted);
+    font-size: 12px;
+    text-align: center;
+}
+
 /* Badges e Chips */
 .badge {
     display: inline-flex;
@@ -826,6 +926,16 @@ header {
         width: 100%;
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .table-controls {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .date-range-filter {
+        flex-wrap: wrap;
     }
     
     .search-container, .search-input {

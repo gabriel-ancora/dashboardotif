@@ -9,6 +9,8 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <div class="app-container">
         <!-- Cabeçalho Principal -->
         <header>
@@ -20,19 +22,16 @@
                 <p>Monitoramento de Nível de Serviço Logístico (Pilar Atendimento)</p>
             </div>
             <div class="header-actions">
-                <input type="file" id="excel-upload" accept=".xlsx,.xls,.csv" style="display:none;">
-                <button class="btn btn-secondary" id="btn-import-excel" title="Importar pedidos a partir de planilha Excel">
+                <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" style="display:none;">
+                <button class="btn btn-secondary" id="btn-importar" title="Importar pedidos a partir de planilha Excel">
                     <i data-lucide="upload"></i> Importar Excel
                 </button>
-                <button class="btn btn-secondary" id="btn-clear-import" title="Limpar dados importados e voltar aos dados originais" style="display:none;">
-                    <i data-lucide="trash-2"></i> Limpar Importação
-                </button>
-                <button class="btn btn-secondary" id="btn-export-csv" title="Exportar pedidos filtrados para planilha Excel">
+                <!-- <button class="btn btn-secondary" id="btn-export-csv" title="Exportar pedidos filtrados para planilha Excel">
                     <i data-lucide="download"></i> Exportar Excel
-                </button>
-                <button class="btn btn-primary" id="btn-new-order" title="Cadastrar novo pedido de entrega">
+                </button> -->
+                <!-- <button class="btn btn-primary" id="btn-new-order" title="Cadastrar novo pedido de entrega">
                     <i data-lucide="plus"></i> Novo Pedido
-                </button>
+                </button> -->
                 <button class="btn-circle" id="theme-toggle" title="Alternar tema Escuro/Claro">
                     <i data-lucide="sun"></i>
                 </button>
@@ -171,7 +170,7 @@
                 </div>
                 <div class="ranking-card">
                     <div class="ranking-title">
-                        <i data-lucide="store" style="color: var(--primary);"></i> Desempenho por PDV (Clientes)
+                        <i data-lucide="store" style="color: var(--primary);"></i> Desempenho por PDV
                     </div>
                     <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
                         <table class="orders-table" style="font-size: 13px;">
@@ -223,27 +222,7 @@
                         <canvas id="chart-trend-hl"></canvas>
                     </div>
                 </div>
-                <div class="ranking-card">
-                    <div class="ranking-title">
-                        <i data-lucide="truck" style="color: var(--success);"></i> Desempenho por Transportadora (Volume HL)
-                    </div>
-                    <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
-                        <table class="orders-table" style="font-size: 13px;">
-                            <thead>
-                                <tr>
-                                    <th>Transportadora</th>
-                                    <th>HL Pedido</th>
-                                    <th>HL Entregue</th>
-                                    <th>Perda (HL)</th>
-                                    <th>OTIF Vol. %</th>
-                                </tr>
-                            </thead>
-                            <tbody id="ranking-hl-carrier-body">
-                                <!-- Preenchido dinamicamente -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                <!-- Remover ranking transportadora -->
             </div>
             
             <div class="charts-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 32px;">
@@ -283,7 +262,7 @@
             <div class="ranking-grid">
                 <div class="chart-card">
                     <div class="chart-header">
-                        <h2>Grau de Atendimento Volumétrico por Categoria</h2>
+                        <h2>Grau de Atendimento Volumétrico</h2>
                     </div>
                     <div class="chart-container">
                         <canvas id="chart-sku-share"></canvas>
@@ -291,13 +270,13 @@
                 </div>
                 <div class="ranking-card">
                     <div class="ranking-title">
-                        <i data-lucide="package" style="color: var(--accent);"></i> Desempenho por Categoria de SKU
+                        <i data-lucide="package" style="color: var(--accent);"></i> Desempenho por Tipo de Movimento
                     </div>
                     <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
                         <table class="orders-table" style="font-size: 13px;">
                             <thead>
                                 <tr>
-                                    <th>Categoria</th>
+                                    <th>Tipo de Movimento</th>
                                     <th>Qtd. Pedidos</th>
                                     <th>Corte Médio (%)</th>
                                     <th>In-Full (IF) %</th>
@@ -315,7 +294,7 @@
             <div class="charts-grid" style="grid-template-columns: 1fr; margin-bottom: 32px;">
                 <div class="chart-card">
                     <div class="chart-header">
-                        <h2>OTIF % Geral das Categorias de SKU</h2>
+                        <h2>OTIF % Geral por Tipo de Movimento</h2>
                     </div>
                     <div class="chart-container" style="min-height: 250px;">
                         <canvas id="chart-sku-otif"></canvas>
@@ -325,7 +304,7 @@
         </div>
 
         <!-- Tabela Operacional de Pedidos -->
-        <section class="table-panel">
+        <!-- <section class="table-panel">
             <div class="table-header">
                 <h2>Lista Detalhada de Entregas</h2>
             </div>
@@ -345,7 +324,7 @@
                         </tr>
                     </thead>
                     <tbody id="table-body">
-                        <!-- Carregado dinamicamente -->
+
                     </tbody>
                 </table>
             </div>
@@ -357,6 +336,59 @@
                         <i data-lucide="chevron-left" style="width:16px;height:16px;"></i>
                     </button>
                     <span class="pagination-info" id="current-page-indicator">1 de 6</span>
+                    <button class="pagination-btn" id="btn-next-page" title="Próxima Página">
+                        <i data-lucide="chevron-right" style="width:16px;height:16px;"></i>
+                    </button>
+                </div>
+            </div>
+        </section> -->
+        <section class="table-panel">
+            <div class="table-header">
+                <h2>Lista Detalhada de Entregas</h2>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="orders-table">
+                    <thead>
+                        <tr class="header-row">
+                            <th data-sort="ped_id" class="sortable"># <span class="sort-icon"></span></th>
+                            <th data-sort="num_pedido" class="sortable">Nº Pedido <span class="sort-icon"></span></th>
+                            <th data-sort="cod_cliente" class="sortable">Cód. Cliente <span class="sort-icon"></span></th>
+                            <th data-sort="data_entrega_original" class="sortable">Dt. Entr. Original <span class="sort-icon"></span></th>
+                            <th data-sort="data_entrega" class="sortable">Data Entrega <span class="sort-icon"></span></th>
+                            <th data-sort="tipo_pedido" class="sortable">Tipo Pedido <span class="sort-icon"></span></th>
+                            <th data-sort="desc_tipo_movimento" class="sortable">Desc. Tipo Movimento <span class="sort-icon"></span></th>
+                            <th data-sort="volume_hectolitro" class="sortable">Vol. Hectolitro <span class="sort-icon"></span></th>
+                            <th data-sort="situacao_item" class="sortable">Situação Item <span class="sort-icon"></span></th>
+                            <th data-sort="situacao_atend_item" class="sortable">Sit. Atend. Item <span class="sort-icon"></span></th>
+                            <th data-sort="situacao_nf" class="sortable">Situação NF <span class="sort-icon"></span></th>
+                        </tr>
+                        <tr class="filters-row">
+                            <th><input type="text" data-filter="ped_id" placeholder="Filtrar..."></th>
+                            <th><input type="text" data-filter="num_pedido" placeholder="Filtrar..."></th>
+                            <th><input type="text" data-filter="cod_cliente" placeholder="Filtrar..."></th>
+                            <th>---</th>
+                            <th>---</th>
+                            <th><input type="text" data-filter="tipo_pedido" placeholder="Filtrar..."></th>
+                            <th><input type="text" data-filter="desc_tipo_movimento" placeholder="Filtrar..."></th>
+                            <th><input type="text" data-filter="volume_hectolitro" placeholder="Filtrar..."></th>
+                            <th><input type="text" data-filter="situacao_item" placeholder="Filtrar..."></th>
+                            <th><input type="text" data-filter="situacao_atend_item" placeholder="Filtrar..."></th>
+                            <th><input type="text" data-filter="situacao_nf" placeholder="Filtrar..."></th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        </tbody>
+                </table>
+            </div>
+            
+            <div class="table-footer">
+                <span id="table-info">Carregando pedidos...</span>
+                <div class="pagination">
+                    <button class="pagination-btn" id="btn-prev-page" title="Página Anterior">
+                        <i data-lucide="chevron-left" style="width:16px;height:16px;"></i>
+                    </button>
+                    <span class="pagination-info" id="current-page-indicator">1 de 1</span>
                     <button class="pagination-btn" id="btn-next-page" title="Próxima Página">
                         <i data-lucide="chevron-right" style="width:16px;height:16px;"></i>
                     </button>
@@ -381,22 +413,14 @@
                             <label for="form-id">Código do Pedido</label>
                             <input type="text" id="form-id" class="filter-control" placeholder="Ex: PED-2026-060" required>
                         </div>
-                        <div class="form-group">
-                            <label for="form-valor">Valor do Pedido (R$)</label>
-                            <input type="number" step="0.01" id="form-valor" class="filter-control" placeholder="0.00" required>
-                        </div>
+                        <!-- form-valor removido -->
                         <div class="form-group">
                             <label for="form-cliente">Cliente</label>
                             <select id="form-cliente" class="filter-control" required>
                                 <!-- JS -->
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label for="form-transportadora">Transportadora</label>
-                            <select id="form-transportadora" class="filter-control" required>
-                                <!-- JS -->
-                            </select>
-                        </div>
+                        <!-- form-transportadora removido -->
                         <div class="form-group">
                             <label for="form-categoria">Categoria</label>
                             <select id="form-categoria" class="filter-control" required>
@@ -448,7 +472,21 @@
             </form>
         </div>
     </div>
-
+    <!-- <section>
+        <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" style="margin-top: 10px;" />
+        <button id="btn-importar" class="pagination-btn" style="padding: 8px 15px; background: #24b47e; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">
+            Enviar para o Banco de Dados
+        </button>
+        <div id="progress-container" style="display: none; margin-top: 15px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px;">
+                <span id="import-status">Preparando envio...</span>
+                <span id="progress-percentage" style="font-weight: bold; color: #24b47e;">0%</span>
+            </div>
+            <div style="width: 100%; background-color: #e0e0e0; border-radius: 10px; height: 12px; overflow: hidden;">
+                <div id="progress-bar" style="width: 0%; background-color: #24b47e; height: 100%; transition: width 0.3s ease;"></div>
+            </div>
+        </div>
+    </section> -->
     <!-- Bibliotecas CDN -->
     <!-- Gráficos: Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -458,7 +496,6 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
     
     <!-- Lógica da Aplicação -->
-    <script src="data.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

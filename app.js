@@ -1,3 +1,22 @@
+const supabaseUrl = 'https://eqvlivvaqnadasfchnzp.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxdmxpdnZhcW5hZGFzZmNobnpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MDA4NDAsImV4cCI6MjA5ODk3Njg0MH0.szN2eZVtOi8-MVXgvgy_UZRJFA6L0UDpy_t0b9nsgKo';
+const banco = supabase.createClient(supabaseUrl, supabaseKey);
+
+// Funções de validação de regra de negócio OTIF
+function isOrderOT(order) {
+    if (!order.data_entrega || !order.data_entrega_original) return false;
+    const dtEntrega = new Date(order.data_entrega).toISOString().split('T')[0];
+    const dtOriginal = new Date(order.data_entrega_original).toISOString().split('T')[0];
+    return dtEntrega <= dtOriginal;
+}
+
+function isOrderIF(order) {
+    const sItem = (order.situacao_item || '').trim().toLowerCase();
+    const sAtend = (order.situacao_atend_item || '').trim().toLowerCase();
+    const sNf = (order.situacao_nf || '').trim().toLowerCase();
+    return sItem === 'ENTREGUE' && sAtend === 'ATENDIDO' && sNf === 'NOTA EMITIDA';
+}
+
 // Controle de Estado do Dashboard
 let state = {
     orders: [],
@@ -39,6 +58,7 @@ const DOM = {
     filterEndDate: document.getElementById("filter-end-date"),
     filterCliente: document.getElementById("filter-cliente"),
     btnClearFilters: document.getElementById("btn-clear-filters"),
+    btnClearFiltersTable: document.getElementById("btn-clear-filters-table"),
     btnNewOrder: document.getElementById("btn-new-order"),
     btnExportCsv: document.getElementById("btn-export-csv"),
     btnImportExcel: document.getElementById("btn-import-excel"),
@@ -160,43 +180,16 @@ function toggleTheme() {
 
 // Carregar Dados
 async function loadData() {
-    // 1. Prioridade: dados importados do Excel
-    const importedData = localStorage.getItem("otif-imported-orders");
-    if (importedData) {
-        state.orders = JSON.parse(importedData);
-        state.dataSource = "excel";
-        showImportBadge(true);
-        return;
+    try {
+        const { data, error } = await banco.from('Pedidos').select('*');
+        if (error) throw error;
+        state.orders = data || [];
+        state.dataSource = "api";
+    } catch (error) {
+        console.warn('Supabase indisponível:', error.message);
+        state.orders = [];
+        state.dataSource = "empty";
     }
-
-    // 2. Dados salvos manualmente (edições do usuário)
-    const savedData = localStorage.getItem("otif-orders");
-    if (savedData) {
-        state.orders = JSON.parse(savedData);
-        state.dataSource = "local";
-    } else {
-        // 3. Fallback: dados iniciais do data.js
-        if (typeof INITIAL_ORDERS_DATA !== 'undefined' && INITIAL_ORDERS_DATA.length > 0) {
-            state.orders = JSON.parse(JSON.stringify(INITIAL_ORDERS_DATA));
-            localStorage.setItem("otif-orders", JSON.stringify(state.orders));
-            state.dataSource = "initial";
-        } else {
-            // 4. Último recurso: tentar API
-            try {
-                const response = await fetch('/api/otif');
-                if (!response.ok) throw new Error('Network response was not ok');
-                const data = await response.json();
-                state.orders = data;
-                localStorage.setItem("otif-orders", JSON.stringify(state.orders));
-                state.dataSource = "api";
-            } catch (error) {
-                console.warn('API indisponível, usando dados estáticos:', error.message);
-                state.orders = [];
-                state.dataSource = "empty";
-            }
-        }
-    }
-    showImportBadge(false);
 }
 
 // Exibir/ocultar botão "Limpar Importação"
@@ -208,16 +201,14 @@ function showImportBadge(show) {
 
 // Preencher Dropdowns com dados exclusivos da base
 function populateFilterDropdowns() {
-    const clientes = [...new Set(state.orders.map(o => o.cliente))].sort();
-    const transportadoras = [...new Set(state.orders.map(o => o.transportadora))].sort();
-    const categorias = [...new Set(state.orders.map(o => o.categoria))].sort();
+    const clientes = [...new Set(state.orders.map(o => o.cod_cliente).filter(Boolean))].sort();
+    const categorias = [...new Set(state.orders.map(o => o.desc_tipo_movimento).filter(Boolean))].sort();
 
     fillDropdown(DOM.filterCliente, clientes, "Todos os Clientes");
 
     // Formulário do modal
-    fillDropdown(DOM.formCliente, clientes, "Selecione o Cliente", false);
-    fillDropdown(DOM.formTransportadora, transportadoras, "Selecione a Transportadora", false);
-    fillDropdown(DOM.formCategoria, categorias, "Selecione a Categoria", false);
+    if (DOM.formCliente) fillDropdown(DOM.formCliente, clientes, "Selecione o Cliente", false);
+    if (DOM.formCategoria) fillDropdown(DOM.formCategoria, categorias, "Selecione a Categoria", false);
 
     populateMonthDropdown();
 }
@@ -233,8 +224,8 @@ function populateMonthDropdown() {
     if (!DOM.filterMonth) return;
 
     const monthKeys = [...new Set(state.orders
-        .filter(o => o.data_pedido)
-        .map(o => o.data_pedido.slice(0, 7)) // "YYYY-MM"
+        .filter(o => o.data_entrega_original)
+        .map(o => o.data_entrega_original.slice(0, 7)) // "YYYY-MM"
     )].sort().reverse(); // meses mais recentes primeiro
 
     let html = `<option value="">Todos os Meses</option>`;
@@ -294,16 +285,8 @@ function setupEventListeners() {
         updateDashboard();
     });
     
-    DOM.btnClearFilters.addEventListener("click", clearFilters);
-    
-    // Ações do Cabeçalho
-    DOM.btnNewOrder.addEventListener("click", () => openOrderModal());
-    DOM.btnExportCsv.addEventListener("click", exportToCsv);
-
-    // Importação de Excel
-    DOM.btnImportExcel.addEventListener("click", () => DOM.excelUpload.click());
-    DOM.excelUpload.addEventListener("change", handleExcelUpload);
-    DOM.btnClearImport.addEventListener("click", clearImportedData);
+    if (DOM.btnClearFilters) DOM.btnClearFilters.addEventListener("click", clearFilters);
+    if (DOM.btnClearFiltersTable) DOM.btnClearFiltersTable.addEventListener("click", clearFilters);
     
     // Paginação
     DOM.btnPrevPage.addEventListener("click", () => {
@@ -342,42 +325,6 @@ function setupEventListeners() {
         });
     });
     
-    // Controle do Modal
-    DOM.modalClose.addEventListener("click", closeOrderModal);
-    DOM.btnCancelModal.addEventListener("click", closeOrderModal);
-    DOM.modalForm.addEventListener("submit", handleFormSubmit);
-    
-    // Lógica condicional do formulário para exibição de causas raiz
-    const checkFormFailures = () => {
-        const prevDate = DOM.formPrevistaDate.value;
-        const entregaDate = DOM.formEntregaDate.value;
-        const qtdPedida = parseFloat(DOM.formQtdPedida.value) || 0;
-        const qtdEntregue = parseFloat(DOM.formQtdEntregue.value) || 0;
-        
-        let isLate = false;
-        if (prevDate && entregaDate) {
-            isLate = new Date(entregaDate) > new Date(prevDate);
-        }
-        
-        const isIncomplete = qtdEntregue < qtdPedida;
-        
-        if (isLate || isIncomplete) {
-            DOM.formMotivoFalhaGroup.style.display = "flex";
-            DOM.formMotivoFalha.setAttribute("required", "required");
-            if (DOM.formMotivoFalha.value === "Nenhum") {
-                DOM.formMotivoFalha.value = isLate ? "Atraso na Transportadora" : "Quebra de Estoque";
-            }
-        } else {
-            DOM.formMotivoFalhaGroup.style.display = "none";
-            DOM.formMotivoFalha.removeAttribute("required");
-            DOM.formMotivoFalha.value = "Nenhum";
-        }
-    };
-    
-    DOM.formPrevistaDate.addEventListener("change", checkFormFailures);
-    DOM.formEntregaDate.addEventListener("change", checkFormFailures);
-    DOM.formQtdPedida.addEventListener("input", checkFormFailures);
-    DOM.formQtdEntregue.addEventListener("input", checkFormFailures);
 }
 
 // Alternância de Abas
@@ -427,10 +374,10 @@ function clearFilters() {
 // Filtrar Dados da Base
 function getFilteredData() {
     return state.orders.filter(order => {
-        const matchesMonth = !state.filters.month || (order.data_pedido && order.data_pedido.slice(0, 7) === state.filters.month);
-        const matchesStartDate = !state.filters.startDate || order.data_pedido >= state.filters.startDate;
-        const matchesEndDate = !state.filters.endDate || order.data_pedido <= state.filters.endDate;
-        const matchesCliente = !state.filters.cliente || order.cliente === state.filters.cliente;
+        const matchesMonth = !state.filters.month || (order.data_entrega_original && order.data_entrega_original.slice(0, 7) === state.filters.month);
+        const matchesStartDate = !state.filters.startDate || order.data_entrega_original >= state.filters.startDate;
+        const matchesEndDate = !state.filters.endDate || order.data_entrega_original <= state.filters.endDate;
+        const matchesCliente = !state.filters.cliente || order.cod_cliente === state.filters.cliente;
         
         return matchesMonth && matchesStartDate && matchesEndDate && matchesCliente;
     });
@@ -448,7 +395,7 @@ function sortData(data) {
         if (col.includes("data")) {
             valA = new Date(valA || "1970-01-01").getTime();
             valB = new Date(valB || "1970-01-01").getTime();
-        } else if (col === "valor" || col === "quantidade_pedida" || col === "quantidade_entregue" || col === "volume_hl") {
+        } else if (col === "volume_hectolitro" || col === "ped_id") {
             valA = parseFloat(valA) || 0;
             valB = parseFloat(valB) || 0;
         } else {
@@ -487,7 +434,27 @@ function updateDashboard() {
 
 // Calcular e Exibir Métricas baseadas na aba ativa
 function calculateMetrics(data) {
-    const total = data.length;
+    let processedData = data;
+    if (state.activeTab === "pdv") {
+        const visitas = {};
+        data.forEach(order => {
+            const num = order.numero_pedido;
+            if (!num) return; // ignora se não tiver numero de pedido
+            if (!visitas[num]) {
+                visitas[num] = { isOt: false, isIf: false, fake: true };
+            }
+            if (isOrderOT(order) && isOrderIF(order)) {
+                visitas[num].isOt = true;
+                visitas[num].isIf = true;
+            } else if (isOrderOT(order)) {
+                visitas[num].isOt = true;
+            } else if (isOrderIF(order)) {
+                visitas[num].isIf = true;
+            }
+        });
+        processedData = Object.values(visitas);
+    }
+    const total = processedData.length;
     
     // KPI Cards Domínio Geral
     const kpiCard1 = document.querySelector(".kpi-otif");
@@ -500,7 +467,7 @@ function calculateMetrics(data) {
         DOM.kpiOt.textContent = "0.0%";
         DOM.kpiIf.textContent = "0.0%";
         DOM.kpiTotal.textContent = "0";
-        DOM.kpiRevenue.textContent = "R$ 0,00";
+        if (DOM.kpiRevenue) DOM.kpiRevenue.textContent = "";
         DOM.kpiLate.textContent = "0";
         DOM.kpiIncomplete.textContent = "0";
         
@@ -524,9 +491,17 @@ function calculateMetrics(data) {
     let otVolume = 0;
     let ifVolume = 0;
     
-    data.forEach(order => {
-        const isOt = new Date(order.data_entrega) <= new Date(order.data_prevista);
-        const isIf = order.quantidade_entregue >= order.quantidade_pedida;
+    processedData.forEach(order => {
+        let isOt = false;
+        let isIf = false;
+        
+        if (order.fake) {
+            isOt = order.isOt;
+            isIf = order.isIf;
+        } else {
+            isOt = isOrderOT(order);
+            isIf = isOrderIF(order);
+        }
         
         if (isOt) otCount++;
         else lateCount++;
@@ -535,21 +510,20 @@ function calculateMetrics(data) {
         else incompleteCount++;
         
         if (isOt && isIf) otifCount++;
-        
-        totalRevenue += parseFloat(order.valor) || 0;
-        
+    });
+
+    data.forEach(order => {
         // Volumetria (HL)
-        const vol = parseFloat(order.volume_hl) || 0;
+        const vol = parseFloat(order.volume_hectolitro) || 0;
         totalVolumePedido += vol;
         
         // Volume entregue proporcional a quantidade entregue
-        const ratio = order.quantidade_pedida > 0 ? (order.quantidade_entregue / order.quantidade_pedida) : 0;
-        const volEntregue = vol * ratio;
+        const volEntregue = isOrderIF(order) ? vol : 0;
         totalVolumeEntregue += volEntregue;
         
-        if (isOt) otVolume += vol;
-        if (isIf) ifVolume += volEntregue;
-        if (isOt && isIf) otifVolume += volEntregue;
+        if (isOrderOT(order)) otVolume += vol;
+        if (isOrderIF(order)) ifVolume += volEntregue;
+        if (isOrderOT(order) && isOrderIF(order)) otifVolume += volEntregue;
     });
     
     // Métricas Percentuais Operacionais (Baseadas em Pedidos)
@@ -564,7 +538,7 @@ function calculateMetrics(data) {
     const totalVolumeCorte = totalVolumePedido - totalVolumeEntregue;
     
     // Formatar moeda
-    const formattedRevenue = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(totalRevenue);
+    const formattedRevenue = "";
     
     // Ajustar Layout e Títulos dos KPI Cards de acordo com a aba selecionada
     if (state.activeTab === "hl") {
@@ -584,13 +558,13 @@ function calculateMetrics(data) {
         kpiCard3.querySelector(".radial-text").textContent = "Realiz.";
         setRadialProgress(DOM.circleIf, pctIfVol);
         
-        // Card de volume & faturamento adaptado
+        // Card de volume
         kpiCard4.querySelector("h3").textContent = "Corte Volumétrico";
         DOM.kpiTotal.textContent = `${totalVolumeCorte.toFixed(1)} HL`;
         
         const detailsContainer = kpiCard4.querySelector("div[style*='display: flex']");
         if (detailsContainer) {
-            detailsContainer.innerHTML = `Faturamento: <strong style="color:var(--text-primary)">${formattedRevenue}</strong>`;
+            detailsContainer.innerHTML = ``;
         }
         
         const badgesContainer = kpiCard4.querySelector("div[style*='gap: 12px']");
@@ -624,7 +598,7 @@ function calculateMetrics(data) {
         
         const detailsContainer = kpiCard4.querySelector("div[style*='display: flex']");
         if (detailsContainer) {
-            detailsContainer.innerHTML = `Faturamento: <strong style="color:var(--text-primary)">${formattedRevenue}</strong>`;
+            detailsContainer.innerHTML = ``;
         }
         
         const badgesContainer = kpiCard4.querySelector("div[style*='gap: 12px']");
@@ -670,11 +644,11 @@ function renderTable(data) {
         
     let html = "";
     if (paginatedItems.length === 0) {
-        html = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 40px;">Nenhum pedido atende aos filtros aplicados.</td></tr>`;
+        html = `<tr><td colspan="11" style="text-align: center; color: var(--text-muted); padding: 40px;">Nenhum pedido atende aos filtros aplicados.</td></tr>`;
     } else {
         paginatedItems.forEach(order => {
-            const isOt = new Date(order.data_entrega) <= new Date(order.data_prevista);
-            const isIf = order.quantidade_entregue >= order.quantidade_pedida;
+            const isOt = isOrderOT(order);
+            const isIf = isOrderIF(order);
             const isOtif = isOt && isIf;
             
             let statusHtml = "";
@@ -695,40 +669,26 @@ function renderTable(data) {
                 statusHtml = `<span class="badge ${badgeClass}">${text}</span>`;
             }
             
-            const formattedDatePedido = formatDate(order.data_pedido);
-            const formattedDatePrevista = formatDate(order.data_prevista);
-            const formattedDateEntrega = formatDate(order.data_entrega);
+            const formattedDateOriginal = order.data_entrega_original ? formatDate(order.data_entrega_original) : '-';
+            const formattedDateEntrega = order.data_entrega ? formatDate(order.data_entrega) : '-';
             
             html += `
                 <tr>
-                    <td><strong>${order.id}</strong></td>
-                    <td>${order.cliente}</td>
-                    <td>${order.transportadora}</td>
-                    <td>${order.categoria}</td>
-                    <td>${formattedDatePedido}</td>
-                    <td>${formattedDatePrevista}</td>
+                    <td><strong>${order.ped_id || '-'}</strong></td>
+                    <td>${order.numero_pedido || '-'}</td>
+                    <td>${order.cod_cliente || '-'}</td>
+                    <td>${formattedDateOriginal}</td>
                     <td>
                         <span style="color: ${isOt ? 'inherit' : 'var(--danger)'}">
                             ${formattedDateEntrega}
                         </span>
                     </td>
-                    <td>
-                        <div class="otif-indicator">
-                            <span class="dot ${isOt ? 'dot-success' : 'dot-danger'}"></span>
-                            <span class="dot ${isIf ? 'dot-success' : 'dot-danger'}"></span>
-                            ${statusHtml}
-                        </div>
-                    </td>
-                    <td>
-                        <div class="row-actions">
-                            <button class="btn-icon-table" onclick="openOrderModal('${order.id}')" title="Editar Pedido">
-                                <i data-lucide="edit-3" style="width:14px;height:14px;"></i>
-                            </button>
-                            <button class="btn-icon-table btn-delete" onclick="deleteOrder('${order.id}')" title="Excluir Pedido">
-                                <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
-                            </button>
-                        </div>
-                    </td>
+                    <td>${order.tipo_pedido || '-'}</td>
+                    <td>${order.desc_tipo_movimento || '-'}</td>
+                    <td>${parseFloat(order.volume_hectolitro || 0).toFixed(2)}</td>
+                    <td>${order.situacao_item || '-'}</td>
+                    <td>${order.situacao_atend_item || '-'}</td>
+                    <td>${order.situacao_nf || '-'}</td>
                 </tr>
             `;
         });
@@ -745,18 +705,33 @@ function renderRankingTables(data) {
     // --- 1. Aba PDV: Ranking de Clientes ---
     if (state.activeTab === "pdv") {
         const pdvAgg = {};
+        const visitasMap = {};
         data.forEach(order => {
-            const name = order.cliente;
+            const cli = order.cod_cliente || 'Desconhecido';
+            const num = order.numero_pedido;
+            if (!num) return;
+            if (!visitasMap[num]) {
+                visitasMap[num] = { cliente: cli, isOt: false, isIf: false };
+            }
+            if (isOrderOT(order) && isOrderIF(order)) {
+                visitasMap[num].isOt = true;
+                visitasMap[num].isIf = true;
+            } else if (isOrderOT(order)) {
+                visitasMap[num].isOt = true;
+            } else if (isOrderIF(order)) {
+                visitasMap[num].isIf = true;
+            }
+        });
+        
+        Object.values(visitasMap).forEach(v => {
+            const name = v.cliente;
             if (!pdvAgg[name]) {
                 pdvAgg[name] = { total: 0, ot: 0, corte: 0, otif: 0 };
             }
             pdvAgg[name].total++;
-            const isOt = new Date(order.data_entrega) <= new Date(order.data_prevista);
-            const isIf = order.quantidade_entregue >= order.quantidade_pedida;
-            
-            if (isOt) pdvAgg[name].ot++;
-            if (!isIf) pdvAgg[name].corte++;
-            if (isOt && isIf) pdvAgg[name].otif++;
+            if (v.isOt) pdvAgg[name].ot++;
+            if (!v.isIf) pdvAgg[name].corte++;
+            if (v.isOt && v.isIf) pdvAgg[name].otif++;
         });
         
         // Sort clients by OTIF % desc, then total orders desc
@@ -789,31 +764,16 @@ function renderRankingTables(data) {
         DOM.rankingPdvBody.innerHTML = html;
     }
     
-    // --- 2. Aba HL: Rankings Volumétricos de Transportadoras e Clientes (HL) ---
+    // --- 2. Aba HL: Rankings Volumétricos de Clientes (HL) ---
     if (state.activeTab === "hl") {
-        // Ranking de Transportadoras
-        const carrierAgg = {};
-        // Ranking de Clientes
         const clientAgg = {};
         
         data.forEach(order => {
-            const carr = order.transportadora;
-            const cli = order.cliente;
-            const vol = parseFloat(order.volume_hl) || 0;
-            const ratio = order.quantidade_pedida > 0 ? (order.quantidade_entregue / order.quantidade_pedida) : 0;
-            const volEntregue = vol * ratio;
+            const cli = order.cod_cliente || 'Desconhecido';
+            const vol = parseFloat(order.volume_hectolitro) || 0;
+            const volEntregue = isOrderIF(order) ? vol : 0;
             
-            const isOt = new Date(order.data_entrega) <= new Date(order.data_prevista);
-            const isIf = order.quantidade_entregue >= order.quantidade_pedida;
-            const otifVol = (isOt && isIf) ? volEntregue : 0;
-            
-            // Transportadoras
-            if (!carrierAgg[carr]) {
-                carrierAgg[carr] = { totalVol: 0, entregueVol: 0, otifVol: 0 };
-            }
-            carrierAgg[carr].totalVol += vol;
-            carrierAgg[carr].entregueVol += volEntregue;
-            carrierAgg[carr].otifVol += otifVol;
+            const otifVol = (isOrderOT(order) && isOrderIF(order)) ? volEntregue : 0;
             
             // Clientes
             if (!clientAgg[cli]) {
@@ -824,36 +784,7 @@ function renderRankingTables(data) {
             clientAgg[cli].otifVol += otifVol;
         });
         
-        // Renderizar Transportadoras HL
-        const sortedCarriers = Object.keys(carrierAgg).map(name => {
-            const d = carrierAgg[name];
-            return {
-                name,
-                totalVol: d.totalVol,
-                entregueVol: d.entregueVol,
-                perdaVol: d.totalVol - d.entregueVol,
-                otifVolPct: d.totalVol > 0 ? (d.otifVol / d.totalVol) * 100 : 0
-            };
-        }).sort((a, b) => b.otifVolPct - a.otifVolPct);
-        
-        let htmlCarrier = "";
-        sortedCarriers.forEach((c, idx) => {
-            const isSuccess = c.otifVolPct >= 85;
-            htmlCarrier += `
-                <tr>
-                    <td><span class="ranking-rank">${idx + 1}</span><strong>${c.name}</strong></td>
-                    <td>${c.totalVol.toFixed(1)} HL</td>
-                    <td>${c.entregueVol.toFixed(1)} HL</td>
-                    <td style="color: ${c.perdaVol > 0 ? 'var(--warning)' : 'inherit'}">${c.perdaVol.toFixed(1)} HL</td>
-                    <td>
-                        <span class="ranking-value ${isSuccess ? 'success' : 'danger'}">
-                            ${c.otifVolPct.toFixed(1)}%
-                        </span>
-                    </td>
-                </tr>
-            `;
-        });
-        DOM.rankingHlCarrierBody.innerHTML = htmlCarrier;
+        if (DOM.rankingHlCarrierBody) DOM.rankingHlCarrierBody.innerHTML = "";
         
         // Renderizar Clientes HL
         const sortedClients = Object.keys(clientAgg).map(name => {
@@ -882,32 +813,28 @@ function renderRankingTables(data) {
                 </tr>
             `;
         });
-        DOM.rankingHlClientBody.innerHTML = htmlClient;
+        if (DOM.rankingHlClientBody) DOM.rankingHlClientBody.innerHTML = htmlClient;
     }
     
-    // --- 3. Aba SKU: Rankings de Categorias ---
+    // --- 3. Aba SKU: Rankings de Tipo de Movimento ---
     if (state.activeTab === "sku") {
         const skuAgg = {};
         data.forEach(order => {
-            const cat = order.categoria;
+            const cat = order.desc_tipo_movimento || 'Desconhecido';
             if (!skuAgg[cat]) {
-                skuAgg[cat] = { total: 0, otif: 0, ifCount: 0, totalPedida: 0, totalEntregue: 0 };
+                skuAgg[cat] = { total: 0, otif: 0, ifCount: 0, corte: 0 };
             }
             skuAgg[cat].total++;
             
-            const isOt = new Date(order.data_entrega) <= new Date(order.data_prevista);
-            const isIf = order.quantidade_entregue >= order.quantidade_pedida;
+            if (isOrderIF(order)) skuAgg[cat].ifCount++;
+            else skuAgg[cat].corte++;
             
-            if (isIf) skuAgg[cat].ifCount++;
-            if (isOt && isIf) skuAgg[cat].otif++;
-            
-            skuAgg[cat].totalPedida += order.quantidade_pedida;
-            skuAgg[cat].totalEntregue += order.quantidade_entregue;
+            if (isOrderOT(order) && isOrderIF(order)) skuAgg[cat].otif++;
         });
         
         const sortedSkus = Object.keys(skuAgg).map(name => {
             const d = skuAgg[name];
-            const cutRate = d.totalPedida > 0 ? (1 - (d.totalEntregue / d.totalPedida)) * 100 : 0;
+            const cutRate = (d.corte / d.total) * 100;
             return {
                 name,
                 total: d.total,
@@ -934,7 +861,7 @@ function renderRankingTables(data) {
                 </tr>
             `;
         });
-        DOM.rankingSkuBody.innerHTML = htmlSku;
+        if (DOM.rankingSkuBody) DOM.rankingSkuBody.innerHTML = htmlSku;
     }
 }
 
@@ -953,7 +880,7 @@ function renderCharts(data) {
     // Agrupamento Semanal Geral
     const weeklyData = {};
     data.forEach(order => {
-        const dateObj = new Date(order.data_pedido);
+        const dateObj = new Date(order.data_entrega_original || order.data_entrega || new Date());
         const weekNum = getWeekNumber(dateObj);
         const label = `Semana ${weekNum}`;
         
@@ -961,8 +888,8 @@ function renderCharts(data) {
             weeklyData[label] = { total: 0, otif: 0, ot: 0, if: 0, volumePedido: 0, volumeEntregue: 0, otifVolume: 0 };
         }
         
-        const isOt = new Date(order.data_entrega) <= new Date(order.data_prevista);
-        const isIf = order.quantidade_entregue >= order.quantidade_pedida;
+        const isOt = isOrderOT(order);
+        const isIf = isOrderIF(order);
         
         weeklyData[label].total++;
         if (isOt) weeklyData[label].ot++;
@@ -970,10 +897,9 @@ function renderCharts(data) {
         if (isOt && isIf) weeklyData[label].otif++;
         
         // Volumetria (HL)
-        const vol = parseFloat(order.volume_hl) || 0;
+        const vol = parseFloat(order.volume_hectolitro) || 0;
         weeklyData[label].volumePedido += vol;
-        const ratio = order.quantidade_pedida > 0 ? (order.quantidade_entregue / order.quantidade_pedida) : 0;
-        const volEntregue = vol * ratio;
+        const volEntregue = isIf ? vol : 0;
         weeklyData[label].volumeEntregue += volEntregue;
         if (isOt && isIf) {
             weeklyData[label].otifVolume += volEntregue;
@@ -1047,10 +973,10 @@ function renderCharts(data) {
         // Gráfico 1.2: OTIF por Cliente
         const clientOtif = {};
         data.forEach(order => {
-            const c = order.cliente;
+            const c = order.cod_cliente || 'Desconhecido';
             if (!clientOtif[c]) clientOtif[c] = { total: 0, otif: 0 };
             clientOtif[c].total++;
-            if (new Date(order.data_entrega) <= new Date(order.data_prevista) && order.quantidade_entregue >= order.quantidade_pedida) {
+            if (isOrderOT(order) && isOrderIF(order)) {
                 clientOtif[c].otif++;
             }
         });
@@ -1084,9 +1010,9 @@ function renderCharts(data) {
         // Gráfico 1.3: Causa de Falhas nos PDVs
         const clientFailures = {};
         data.forEach(order => {
-            const isOt = new Date(order.data_entrega) <= new Date(order.data_prevista);
-            const isIf = order.quantidade_entregue >= order.quantidade_pedida;
-            if ((!isOt || !isIf) && order.motivo_falha !== "Nenhum") {
+            const isOt = isOrderOT(order);
+            const isIf = isOrderIF(order);
+            if ((!isOt || !isIf) && order.motivo_falha && order.motivo_falha !== "Nenhum") {
                 clientFailures[order.motivo_falha] = (clientFailures[order.motivo_falha] || 0) + 1;
             }
         });
@@ -1161,13 +1087,13 @@ function renderCharts(data) {
             }
         });
         
-        // Gráfico 2.2: HL Delivered por Categoria
+        // Gráfico 2.2: HL Delivered por Tipo de Movimento
         const catHl = {};
         data.forEach(order => {
-            const cat = order.categoria;
-            const vol = parseFloat(order.volume_hl) || 0;
-            const ratio = order.quantidade_pedida > 0 ? (order.quantidade_entregue / order.quantidade_pedida) : 0;
-            catHl[cat] = (catHl[cat] || 0) + (vol * ratio);
+            const cat = order.desc_tipo_movimento || 'Desconhecido';
+            const vol = parseFloat(order.volume_hectolitro) || 0;
+            const volEntregue = isOrderIF(order) ? vol : 0;
+            catHl[cat] = (catHl[cat] || 0) + volEntregue;
         });
         const catNames = Object.keys(catHl);
         const catValues = catNames.map(n => catHl[n].toFixed(1));
@@ -1195,20 +1121,18 @@ function renderCharts(data) {
     
     // --- RENDERING DA ABA 3: SKU ---
     if (state.activeTab === "sku") {
-        // Agrupamento por Categorias
+        // Agrupamento por Tipo de Movimento
         const catAgg = {};
         data.forEach(order => {
-            const cat = order.categoria;
+            const cat = order.desc_tipo_movimento || 'Desconhecido';
             if (!catAgg[cat]) {
-                catAgg[cat] = { total: 0, otif: 0, totalPedida: 0, totalEntregue: 0 };
+                catAgg[cat] = { total: 0, otif: 0, ifCount: 0 };
             }
             catAgg[cat].total++;
-            const isOt = new Date(order.data_entrega) <= new Date(order.data_prevista);
-            const isIf = order.quantidade_entregue >= order.quantidade_pedida;
+            const isOt = isOrderOT(order);
+            const isIf = isOrderIF(order);
             if (isOt && isIf) catAgg[cat].otif++;
-            
-            catAgg[cat].totalPedida += order.quantidade_pedida;
-            catAgg[cat].totalEntregue += order.quantidade_entregue;
+            if (isIf) catAgg[cat].ifCount++;
         });
         
         const categories = Object.keys(catAgg);
@@ -1216,7 +1140,7 @@ function renderCharts(data) {
         // Gráfico 3.1: Share de atendimento volumétrico / Grau de Atendimento (IF %)
         const ifRatios = categories.map(cat => {
             const d = catAgg[cat];
-            return d.totalPedida > 0 ? ((d.totalEntregue / d.totalPedida) * 100).toFixed(1) : 0;
+            return ((d.ifCount / d.total) * 100).toFixed(1);
         });
         
         const ctxSkuShare = document.getElementById("chart-sku-share").getContext("2d");
@@ -1282,514 +1206,441 @@ function getWeekNumber(d) {
     return weekNo;
 }
 
-// Geração de Insights e Recomendações Logísticas
-function generateInsights(data) {
-    if (data.length === 0) {
-        DOM.insightsText.innerHTML = "Sem dados disponíveis para gerar recomendações.";
-        DOM.insightsList.innerHTML = "";
+// const supabaseUrl = 'https://eqvlivvaqnadasfchnzp.supabase.co';
+// const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxdmxpdnZhcW5hZGFzZmNobnpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MDA4NDAsImV4cCI6MjA5ODk3Njg0MH0.szN2eZVtOi8-MVXgvgy_UZRJFA6L0UDpy_t0b9nsgKo';
+// const banco = supabase.createClient(supabaseUrl, supabaseKey);
+
+// VARIÁVEIS DE CONTROLE DA PAGINAÇÃO E FILTROS
+let paginaAtual = 1;
+const registrosPorPagina = 10;
+
+// Estado global dos filtros e ordenação
+let filtrosColunas = {};
+let filtroDataInicio = '';
+let filtroDataFim = '';
+let ordenacaoAtual = { coluna: 'ped_id', ascendente: true }; // Ordenação padrão inicial
+
+// Inicialização dos eventos assim que a página carregar
+document.addEventListener('DOMContentLoaded', () => {
+    inicializarEventosFiltros();
+    inicializarEventosOrdenacao();
+    inicializarEventosPaginacao();
+    carregarPedidosReais(); // Primeira carga de dados
+});
+
+// 1. CAPTURA DOS FILTROS POR COLUNA E DATAS
+function inicializarEventosFiltros() {
+    // Inputs das colunas (Debounce de 400ms)
+    let timeoutBusca;
+    document.querySelectorAll('.filters-row input').forEach(input => {
+        input.addEventListener('input', (e) => {
+            clearTimeout(timeoutBusca);
+            timeoutBusca = setTimeout(() => {
+                const coluna = e.target.getAttribute('data-filter');
+                const valor = e.target.value.trim();
+
+                if (valor) {
+                    filtrosColunas[coluna] = valor;
+                } else {
+                    delete filtrosColunas[coluna];
+                }
+                
+                paginaAtual = 1;
+                carregarPedidosReais();
+            }, 400);
+        });
+    });
+
+    // Inputs de data global (Mudamos para 'input' para garantir captura em qualquer navegador)
+    const dateStart = document.getElementById('date-start');
+    const dateEnd = document.getElementById('date-end');
+
+    if (dateStart) {
+        dateStart.addEventListener('input', (e) => {
+            filtroDataInicio = e.target.value;
+            console.log("📅 Data Início Capturada:", filtroDataInicio); // Verifique no F12
+            paginaAtual = 1;
+            carregarPedidosReais();
+        });
+    }
+
+    if (dateEnd) {
+        dateEnd.addEventListener('input', (e) => {
+            filtroDataFim = e.target.value;
+            console.log("📅 Data Fim Capturada:", filtroDataFim); // Verifique no F12
+            paginaAtual = 1;
+            carregarPedidosReais();
+        });
+    }
+
+    // Botão Limpar Filtros
+    const btnClear = document.getElementById('btn-clear-filters');
+    if (btnClear) {
+        btnClear.addEventListener('click', () => {
+            if (dateStart) dateStart.value = '';
+            if (dateEnd) dateEnd.value = '';
+            document.querySelectorAll('.filters-row input').forEach(input => input.value = '');
+            
+            filtrosColunas = {};
+            filtroDataInicio = '';
+            filtroDataFim = '';
+            ordenacaoAtual = { coluna: 'ped_id', ascendente: true };
+
+            document.querySelectorAll('.sortable').forEach(h => h.classList.remove('asc', 'desc'));
+
+            paginaAtual = 1;
+            carregarPedidosReais();
+        });
+    }
+}
+
+// 2. CAPTURA DOS CLIQUES DE ORDENAÇÃO
+function inicializarEventosOrdenacao() {
+    document.querySelectorAll('.sortable').forEach(header => {
+        header.addEventListener('click', () => {
+            let coluna = header.getAttribute('data-sort');
+            
+            // Correção caso o nome do atributo HTML divirja da coluna do banco
+            if (coluna === 'num_pedido') coluna = 'numero_pedido'; 
+
+            let ascendente = true;
+
+            if (ordenacaoAtual.coluna === coluna && ordenacaoAtual.ascendente === true) {
+                ascendente = false;
+            }
+
+            ordenacaoAtual = { coluna, ascendente };
+
+            // Atualiza classes visuais do CSS
+            document.querySelectorAll('.sortable').forEach(h => h.classList.remove('asc', 'desc'));
+            header.classList.add(ascendente ? 'asc' : 'desc');
+
+            carregarPedidosReais();
+        });
+    });
+}
+
+// 3. EVENTOS DE PAGINAÇÃO SEPARADOS
+function inicializarEventosPaginacao() {
+    document.getElementById('btn-prev-page').addEventListener('click', () => {
+        if (paginaAtual > 1) {
+            paginaAtual--;
+            carregarPedidosReais();
+        }
+    });
+
+    document.getElementById('btn-next-page').addEventListener('click', () => {
+        paginaAtual++;
+        carregarPedidosReais();
+    });
+}
+
+// 4. FUNÇÃO PRINCIPAL (CONSTRÓI A QUERY DINÂMICA DO SUPABASE)
+async function carregarPedidosReais() {
+    const tbody = document.getElementById('table-body');
+    const infoTexto = document.getElementById('table-info');
+    const indicator = document.getElementById('current-page-indicator');
+
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;">Carregando pedidos...</td></tr>';
+
+    const deOnde = (paginaAtual - 1) * registrosPorPagina;
+    const ateOnde = deOnde + registrosPorPagina - 1;
+
+    // Inicia a query base
+    let query = banco
+        .from('Pedidos')
+        .select(`
+            ped_id, 
+            numero_pedido, 
+            cod_cliente, 
+            data_entrega_original, 
+            data_entrega, 
+            tipo_pedido, 
+            desc_tipo_movimento, 
+            volume_hectolitro, 
+            situacao_item, 
+            situacao_atend_item, 
+            situacao_nf
+        `, { count: 'exact' });
+
+    // Injeta dinamicamente os filtros por coluna de texto aplicados
+    // Injeta dinamicamente os filtros por coluna de texto ou número
+    Object.keys(filtrosColunas).forEach(coluna => {
+        let campoBanco = coluna;
+        if (coluna === 'num_pedido') campoBanco = 'numero_pedido'; // Mapeamento correto
+
+        const valor = filtrosColunas[coluna];
+        
+        // Lista de colunas que são NÚMEROS (bigint / integer) no seu banco de dados
+        // Adicione aqui 'numero_pedido' ou 'cod_cliente' se eles também forem números puros no banco
+        const colunasNumericas = ['ped_id', 'numero_pedido', 'cod_cliente'];
+
+        if (colunasNumericas.includes(campoBanco)) {
+            // Se for uma coluna numérica e o usuário digitou um número válido, usa .eq()
+            if (!isNaN(valor) && valor.trim() !== '') {
+                query = query.eq(campoBanco, parseInt(valor));
+            } else {
+                // Se o usuário digitou texto onde deveria ser número, forçamos um resultado vazio 
+                // para não quebrar a query com erro de sintaxe do Postgres
+                query = query.eq(campoBanco, -1); 
+            }
+        } else {
+            // Se for texto de verdade (ex: tipo_pedido, situacao_nf), usa ilike normalmente
+            query = query.ilike(campoBanco, `%${valor}%`);
+        }
+    });
+
+    // Injeta filtros de Período de Datas (Baseado estritamente na Data Entrega Original)
+    if (filtroDataInicio) {
+        // gte = Greater Than or Equal (Maior ou igual à data de início)
+        query = query.gte('data_entrega_original', filtroDataInicio); 
+    }
+    if (filtroDataFim) {
+        // lte = Less Than or Equal (Menor ou igual à data de fim)
+        query = query.lte('data_entrega_original', filtroDataFim); 
+    }
+
+    // Injeta a Ordenação ativa do sistema
+    query = query.order(ordenacaoAtual.coluna, { ascending: ordenacaoAtual.ascendente });
+
+    // Aplica o Range da paginação por fim
+    const { data: pedidos, error, count } = await query.range(deOnde, ateOnde);
+
+    if (error) {
+        console.error('Erro ao buscar dados:', error.message);
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; color:red;">Erro: ${error.message}</td></tr>`;
         return;
     }
-    
-    let otifCount = 0;
-    let lateCount = 0;
-    let incompleteCount = 0;
-    const carrierMetrics = {};
-    const failureCauses = {};
-    let totalVolumePedido = 0;
-    let totalVolumeEntregue = 0;
-    let otifVolume = 0;
-    
-    data.forEach(order => {
-        const isOt = new Date(order.data_entrega) <= new Date(order.data_prevista);
-        const isIf = order.quantidade_entregue >= order.quantidade_pedida;
-        
-        if (isOt && isIf) otifCount++;
-        if (!isOt) lateCount++;
-        if (!isIf) incompleteCount++;
-        
-        // Volumetria
-        const vol = parseFloat(order.volume_hl) || 0;
-        totalVolumePedido += vol;
-        const ratio = order.quantidade_pedida > 0 ? (order.quantidade_entregue / order.quantidade_pedida) : 0;
-        const volEntregue = vol * ratio;
-        totalVolumeEntregue += volEntregue;
-        if (isOt && isIf) {
-            otifVolume += volEntregue;
-        }
-        
-        // Transportadora
-        const t = order.transportadora;
-        if (!carrierMetrics[t]) {
-            carrierMetrics[t] = { total: 0, otif: 0, totalVol: 0, otifVol: 0 };
-        }
-        carrierMetrics[t].total++;
-        carrierMetrics[t].totalVol += vol;
-        if (isOt && isIf) {
-            carrierMetrics[t].otif++;
-            carrierMetrics[t].otifVol += volEntregue;
-        }
-        
-        // Falhas
-        if (!isOt || !isIf) {
-            const reason = order.motivo_falha || "Não informado";
-            if (reason !== "Nenhum") {
-                failureCauses[reason] = (failureCauses[reason] || 0) + 1;
-            }
-        }
-    });
-    
-    const pctGeneral = (otifCount / data.length) * 100;
-    const pctGeneralVol = totalVolumePedido > 0 ? (otifVolume / totalVolumePedido) * 100 : 0;
-    
-    let mainInsight = "";
-    if (state.activeTab === "hl") {
-        if (pctGeneralVol >= 85) {
-            mainInsight = `<strong>Nível de serviço volumétrico excelente!</strong> O OTIF Volumétrico está em ${pctGeneralVol.toFixed(1)}%, acima da meta. O escoamento em Hectolitros está saudável.`;
-        } else {
-            mainInsight = `<strong>Gargalo de Volume (HL):</strong> O OTIF Volumétrico consolidado está em ${pctGeneralVol.toFixed(1)}%, indicando perdas físicas expressivas. Veja abaixo as causas:`;
-        }
-    } else {
-        if (pctGeneral >= 85) {
-            mainInsight = `<strong>Desempenho operacional sob controle!</strong> OTIF de pedidos está em ${pctGeneral.toFixed(1)}%, superando a meta logística consolidada de 85%.`;
-        } else {
-            mainInsight = `<strong>Atenção operacional necessária:</strong> Nível de serviço em pedidos está em ${pctGeneral.toFixed(1)}% (meta: 85%). Identificamos as seguintes anomalias:`;
-        }
+
+    if (!pedidos || pedidos.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;">Nenhum pedido encontrado com os parâmetros informados.</td></tr>';
+        infoTexto.innerText = `Exibindo 0 de 0 pedidos`;
+        indicator.innerText = `1 de 1`;
+        document.getElementById('btn-prev-page').disabled = true;
+        document.getElementById('btn-next-page').disabled = true;
+        return;
     }
-    
-    DOM.insightsText.innerHTML = mainInsight;
-    
-    // Insights de Linha
-    const items = [];
-    
-    // 1. Causa Raiz Principal
-    let mainCause = "";
-    let mainCauseCount = 0;
-    Object.keys(failureCauses).forEach(cause => {
-        if (failureCauses[cause] > mainCauseCount) {
-            mainCauseCount = failureCauses[cause];
-            mainCause = cause;
-        }
-    });
-    
-    if (mainCause) {
-        let solution = "Revisar estoques de segurança.";
-        if (mainCause === "Atraso na Transportadora") solution = "Penalizar ou advertir transportadora parceira pelo não cumprimento de SLA.";
-        else if (mainCause === "Quebra de Estoque") solution = "Programar produção urgente ou refaturar pedidos incompletos.";
-        else if (mainCause === "Erro de Separação") solution = "Reforçar conferência e etiquetagem nas esteiras do CD.";
-        
-        items.push({
-            type: "danger",
-            text: `O principal motivo de desvio é <strong>"${mainCause}"</strong> (${mainCauseCount} ocorrências). Ação recomendada: ${solution}`
-        });
-    }
-    
-    // 2. Transportadora gargalo
-    let worstCarrier = null;
-    let worstPct = 100;
-    Object.keys(carrierMetrics).forEach(t => {
-        const m = carrierMetrics[t];
-        if (m.total >= 3) {
-            const pct = state.activeTab === "hl" 
-                ? (m.otifVol / m.totalVol) * 100 
-                : (m.otif / m.total) * 100;
-            if (pct < worstPct) {
-                worstPct = pct;
-                worstCarrier = t;
-            }
-        }
-    });
-    
-    if (worstCarrier && worstPct < 80) {
-        items.push({
-            type: "warning",
-            text: `A transportadora <strong>${worstCarrier}</strong> apresenta nível crítico de SLA (${worstPct.toFixed(0)}%). Risco de ruptura no abastecimento.`
-        });
-    }
-    
-    // 3. Informações Volumétricas para HL
-    if (state.activeTab === "hl") {
-        const lossHl = totalVolumePedido - totalVolumeEntregue;
-        if (lossHl > 0) {
-            items.push({
-                type: "info",
-                text: `Houve corte de <strong>${lossHl.toFixed(1)} HL</strong> no período, representando perda direta de faturamento sobre o volume planejado.`
-            });
-        }
-    } else {
-        if (lateCount > incompleteCount && lateCount > 0) {
-            items.push({
-                type: "info",
-                text: `A <strong>pontualidade (On-Time)</strong> é o principal gargalo atual. Concentre esforços nas janelas de expedição.`
-            });
-        } else if (incompleteCount > lateCount && incompleteCount > 0) {
-            items.push({
-                type: "info",
-                text: `A <strong>completude de carga (In-Full)</strong> é o principal gargalo. Revise a taxa de corte de estoque (Fill Rate).`
-            });
-        }
-    }
-    
-    let listHtml = "";
-    items.forEach(item => {
-        let icon = "alert-circle";
-        let color = "var(--warning)";
-        if (item.type === "danger") {
-            icon = "alert-triangle";
-            color = "var(--danger)";
-        } else if (item.type === "success") {
-            icon = "check-circle";
-            color = "var(--success)";
-        } else if (item.type === "info") {
-            icon = "info";
-            color = "var(--primary)";
-        }
-        
-        listHtml += `
-            <div class="insight-item">
-                <i data-lucide="${icon}" style="width:16px;height:16px;color:${color}"></i>
-                <span>${item.text}</span>
-            </div>
+
+    tbody.innerHTML = '';
+
+    pedidos.forEach(pedido => {
+        const linha = document.createElement('tr');
+        linha.innerHTML = `
+            <td><strong>${pedido.ped_id}</strong></td>
+            <td>${pedido.numero_pedido || '-'}</td>
+            <td>${pedido.cod_cliente || '-'}</td>
+            <td>${formatarData(pedido.data_entrega_original)}</td>
+            <td>${formatarData(pedido.data_entrega)}</td>
+            <td>${pedido.tipo_pedido || '-'}</td>
+            <td>${pedido.desc_tipo_movimento || '-'}</td>
+            <td>${pedido.volume_hectolitro ? pedido.volume_hectolitro : '0'} HL</td>
+            <td><span class="status-badge">${pedido.situacao_item || '-'}</span></td>
+            <td>${pedido.situacao_atend_item || '-'}</td>
+            <td>${pedido.situacao_nf || '-'}</td>
         `;
+        tbody.appendChild(linha);
     });
-    
-    DOM.insightsList.innerHTML = listHtml;
-    lucide.createIcons();
+
+    // ATUALIZA OS TEXTOS DO RODAPÉ DA TABELA
+    const totalPaginas = Math.ceil(count / registrosPorPagina) || 1;
+            
+    infoTexto.innerText = `Exibindo ${deOnde + 1}-${deOnde + pedidos.length} de ${count} pedidos`;
+    indicator.innerText = `${paginaAtual} de ${totalPaginas}`;
+
+    document.getElementById('btn-prev-page').disabled = (paginaAtual === 1);
+    document.getElementById('btn-next-page').disabled = (paginaAtual === totalPages);
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
-// Abrir Modal para Inserção/Edição de Pedidos
-function openOrderModal(orderId = null) {
-    if (orderId) {
-        state.editingOrderId = orderId;
-        const order = state.orders.find(o => o.id === orderId);
-        
-        DOM.modalTitle.textContent = "Editar Pedido";
-        DOM.formId.value = order.id;
-        DOM.formId.setAttribute("disabled", "disabled");
-        
-        DOM.formCliente.value = order.cliente;
-        DOM.formTransportadora.value = order.transportadora;
-        DOM.formCategoria.value = order.categoria;
-        DOM.formValor.value = order.valor;
-        DOM.formPedidoDate.value = order.data_pedido;
-        DOM.formPrevistaDate.value = order.data_prevista;
-        DOM.formEntregaDate.value = order.data_entrega;
-        DOM.formQtdPedida.value = order.quantidade_pedida;
-        DOM.formQtdEntregue.value = order.quantidade_entregue;
-        DOM.formVolumeHl.value = order.volume_hl || "";
-        
-        // Checar se houve falha
-        const isOt = new Date(order.data_entrega) <= new Date(order.data_prevista);
-        const isIf = order.quantidade_entregue >= order.quantidade_pedida;
-        
-        if (!isOt || !isIf) {
-            DOM.formMotivoFalhaGroup.style.display = "flex";
-            DOM.formMotivoFalha.value = order.motivo_falha || "Atraso na Transportadora";
-            DOM.formMotivoFalha.setAttribute("required", "required");
-        } else {
-            DOM.formMotivoFalhaGroup.style.display = "none";
-            DOM.formMotivoFalha.value = "Nenhum";
-            DOM.formMotivoFalha.removeAttribute("required");
-        }
-    } else {
-        state.editingOrderId = null;
-        DOM.modalTitle.textContent = "Novo Pedido";
-        DOM.formId.removeAttribute("disabled");
-        
-        // Gerar ID sequencial dinâmico
-        const nextIdNumber = state.orders.reduce((max, order) => {
-            const num = parseInt(order.id.split("-").pop()) || 0;
-            return num > max ? num : max;
-        }, 0) + 1;
-        DOM.formId.value = `PED-2026-${String(nextIdNumber).padStart(3, "0")}`;
-        
-        DOM.modalForm.reset();
-        DOM.formMotivoFalhaGroup.style.display = "none";
-        DOM.formMotivoFalha.removeAttribute("required");
-        DOM.formMotivoFalha.value = "Nenhum";
-        
-        const today = new Date().toISOString().split("T")[0];
-        DOM.formPedidoDate.value = today;
-        DOM.formPrevistaDate.value = today;
-        DOM.formEntregaDate.value = today;
+// Garanta que a sua função formatarData(data) continue declarada no seu script externo
+
+// CONFIGURAÇÃO DOS EVENTOS DE CLIQUE DOS BOTÕES
+document.getElementById('btn-prev-page').addEventListener('click', () => {
+    if (paginaAtual > 1) {
+        paginaAtual--;
+        carregarPedidosReais();
     }
-    
-    DOM.modal.classList.add("active");
-}
+});
 
-function closeOrderModal() {
-    DOM.modal.classList.remove("active");
-    state.editingOrderId = null;
-}
+document.getElementById('btn-next-page').addEventListener('click', () => {
+    paginaAtual++;
+    carregarPedidosReais();
+});
 
-// Salvar Pedido do Formulário
-function handleFormSubmit(e) {
-    e.preventDefault();
-    
-    const id = DOM.formId.value.trim().toUpperCase();
-    const cliente = DOM.formCliente.value;
-    const transportadora = DOM.formTransportadora.value;
-    const categoria = DOM.formCategoria.value;
-    const valor = parseFloat(DOM.formValor.value) || 0;
-    const data_pedido = DOM.formPedidoDate.value;
-    const data_prevista = DOM.formPrevistaDate.value;
-    const data_entrega = DOM.formEntregaDate.value;
-    const quantidade_pedida = parseInt(DOM.formQtdPedida.value) || 0;
-    const quantidade_entregue = parseInt(DOM.formQtdEntregue.value) || 0;
-    const volume_hl = parseFloat(DOM.formVolumeHl.value) || 0;
-    
-    const isOt = new Date(data_entrega) <= new Date(data_prevista);
-    const isIf = quantidade_entregue >= quantidade_pedida;
-    
-    const motivo_falha = (isOt && isIf) ? "Nenhum" : DOM.formMotivoFalha.value;
-    
-    if (!cliente || !transportadora || !categoria) {
-        alert("Por favor, preencha todos os seletores!");
-        return;
+// Função auxiliar de tratamento de data
+function formatarData(dataString) {
+    if (!dataString) return '-';
+    try {
+        const data = new Date(dataString);
+        if (isNaN(data.getTime())) return dataString;
+        return data.toLocaleDateString('pt-BR');
+    } catch (e) {
+        return dataString;
     }
-    
-    const orderObj = {
-        id, cliente, transportadora, categoria, valor,
-        data_pedido, data_prevista, data_entrega,
-        quantidade_pedida, quantidade_entregue, volume_hl, motivo_falha
-    };
-    
-    if (state.editingOrderId) {
-        const index = state.orders.findIndex(o => o.id === state.editingOrderId);
-        if (index !== -1) {
-            state.orders[index] = orderObj;
-        }
-    } else {
-        if (state.orders.some(o => o.id === id)) {
-            alert(`O Pedido com ID ${id} já existe!`);
-            return;
-        }
-        state.orders.push(orderObj);
-    }
-    
-    localStorage.setItem("otif-orders", JSON.stringify(state.orders));
-    closeOrderModal();
-    populateFilterDropdowns();
-    updateDashboard();
 }
 
-// Excluir Pedido
-window.deleteOrder = function(orderId) {
-    if (confirm(`Tem certeza que deseja excluir o pedido ${orderId}?`)) {
-        state.orders = state.orders.filter(o => o.id !== orderId);
-        localStorage.setItem("otif-orders", JSON.stringify(state.orders));
-        updateDashboard();
-    }
-};
+// Inicia o app carregando a primeira página
+document.addEventListener('DOMContentLoaded', carregarPedidosReais);
 
-window.openOrderModal = function(orderId) {
-    openOrderModal(orderId);
-};
+// Variável global para controle dos dados
+let dadosProntosParaEnviar = [];
 
-// Formatar data em string amigável
-function formatDate(dateStr) {
-    if (!dateStr) return "-";
-    const parts = dateStr.split("-");
-    if (parts.length !== 3) return dateStr;
-    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+// 1. FUNÇÃO DE LIMPEZA DO NOME DAS COLUNAS
+function limparNomeColuna(nome) {
+    if (!nome) return 'coluna_sem_nome';
+    let novoNome = nome.toString().trim().toLowerCase();
+    novoNome = novoNome.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Remove acentos
+    novoNome = novoNome.replace(/\s+/g, '_'); // Espaços para _
+    novoNome = novoNome.replace(/[^a-z0-9_]/g, ''); // Remove caracteres especiais
+    return novoNome;
 }
 
-// Exportar Tabela para CSV (Compatível com Excel)
-function exportToCsv() {
-    const data = sortData(getFilteredData());
-    if (data.length === 0) {
-        alert("Não há dados para exportação!");
-        return;
-    }
-    
-    let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // BOM para UTF-8 no Excel
-    csvContent += "ID Pedido;Cliente;Transportadora;Categoria;Data Pedido;Data Prevista;Data Entrega;Qtd Pedida;Qtd Entregue;Volume HL;Valor;No Prazo;Completo;OTIF;Motivo Falha\r\n";
-    
-    data.forEach(order => {
-        const isOt = new Date(order.data_entrega) <= new Date(order.data_prevista) ? "Sim" : "Não";
-        const isIf = order.quantidade_entregue >= order.quantidade_pedida ? "Sim" : "Não";
-        const isOtif = (isOt === "Sim" && isIf === "Sim") ? "Sim" : "Não";
-        
-        const row = [
-            order.id,
-            `"${order.cliente}"`,
-            `"${order.transportadora}"`,
-            `"${order.categoria}"`,
-            order.data_pedido,
-            order.data_prevista,
-            order.data_entrega,
-            order.quantidade_pedida,
-            order.quantidade_entregue,
-            order.volume_hl.toFixed(1).replace(".", ","),
-            order.valor.toFixed(2).replace(".", ","),
-            isOt,
-            isIf,
-            isOtif,
-            `"${order.motivo_falha}"`
-        ];
-        
-        csvContent += row.join(";") + "\r\n";
-    });
-    
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `dashboard_otif_export_${new Date().toISOString().split("T")[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
+document.getElementById('btn-importar').addEventListener('click', function() {
+    document.getElementById('excel-file-input').click();
+});
 
-// =============================================
-// IMPORTAÇÃO DE PLANILHA EXCEL
-// =============================================
-
-// Mapeamento flexível de colunas da planilha para campos do sistema
-const COLUMN_MAP = {
-    // ID
-    "id": "id", "código": "id", "codigo": "id", "pedido": "id", "nº pedido": "id", "num_pedido": "id",
-    // Cliente
-    "cliente": "cliente", "client": "cliente", "nome_cliente": "cliente", "razão social": "cliente",
-    // Transportadora
-    "transportadora": "transportadora", "carrier": "transportadora", "transp": "transportadora",
-    // Categoria
-    "categoria": "categoria", "category": "categoria", "tipo": "categoria",
-    // Datas
-    "data_pedido": "data_pedido", "data pedido": "data_pedido", "dt_pedido": "data_pedido", "order_date": "data_pedido",
-    "data_prevista": "data_prevista", "data prevista": "data_prevista", "previsão": "data_prevista", "previsao": "data_prevista", "dt_prevista": "data_prevista",
-    "data_entrega": "data_entrega", "data entrega": "data_entrega", "entrega": "data_entrega", "dt_entrega": "data_entrega", "delivery_date": "data_entrega",
-    // Valor
-    "valor": "valor", "value": "valor", "total": "valor", "valor_pedido": "valor",
-    // Quantidades
-    "quantidade_pedida": "quantidade_pedida", "qtd_pedida": "quantidade_pedida", "qtd pedida": "quantidade_pedida", "qty_ordered": "quantidade_pedida",
-    "quantidade_entregue": "quantidade_entregue", "qtd_entregue": "quantidade_entregue", "qtd entregue": "quantidade_entregue", "qty_delivered": "quantidade_entregue",
-    // Volume
-    "volume_hl": "volume_hl", "volume": "volume_hl", "hl": "volume_hl", "hectolitros": "volume_hl",
-    // Motivo
-    "motivo_falha": "motivo_falha", "motivo": "motivo_falha", "causa": "motivo_falha", "motivo do desvio": "motivo_falha", "causa raiz": "motivo_falha"
-};
-
-function handleExcelUpload(event) {
-    const file = event.target.files[0];
+// 2. PROCESSO AUTOMÁTICO: SELECIONOU, PROCESSA E ENVIA DIRETO
+document.getElementById('excel-file-input').addEventListener('change', async function(e) {
+    const file = e.target.files[0];
+    const statusDiv = document.getElementById('import-status');
+    const progressContainer = document.getElementById('progress-container');
+    const progressBar = document.getElementById('progress-bar');
+    const progressPercentage = document.getElementById('progress-percentage');
+    
+    // Pegamos o seu botão de estilo para poder desativá-lo durante o envio
+    const btnVisual = document.getElementById('btn-importar');
+    const inputArquivo = this;
+    
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        try {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: "array", cellDates: true });
+    // Desativa o botão visual e o input para evitar cliques duplos
+    btnVisual.disabled = true;
+    inputArquivo.disabled = true;
 
-            // Ler a primeira aba da planilha
-            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-            const rawRows = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
+    // Exibe e reseta a barra de progresso
+    progressContainer.style.display = "block";
+    progressBar.style.width = "0%";
+    progressBar.style.backgroundColor = "#24b47e"; 
+    progressPercentage.innerText = "0%";
+    statusDiv.innerText = "Conectando ao banco...";
 
-            if (rawRows.length === 0) {
-                alert("⚠️ A planilha está vazia. Verifique o arquivo e tente novamente.");
-                return;
-            }
+    try {
+        // --- PASSO A: BUSCAR COLUNAS EXISTENTES NO SUPABASE ---
+        const { data: testeEstrutura, error: erroEstrutura } = await banco
+            .from('Pedidos')
+            .select('*')
+            .limit(1);
 
-            // Mapear colunas
-            const orders = rawRows.map((row, index) => {
-                const mapped = {};
-                for (const [excelCol, value] of Object.entries(row)) {
-                    const normalizedCol = excelCol.toString().trim().toLowerCase();
-                    const fieldName = COLUMN_MAP[normalizedCol];
-                    if (fieldName) {
-                        mapped[fieldName] = value;
+        if (erroEstrutura) throw new Error(`Erro de estrutura: ${erroEstrutura.message}`);
+
+        let colunasPermitidas = [];
+        if (testeEstrutura && testeEstrutura.length > 0) {
+            colunasPermitidas = Object.keys(testeEstrutura[0]);
+        } else {
+            colunasPermitidas = [
+                'ped_id', 'numero_pedido', 'cod_cliente', 'data_entrega_original', 
+                'data_entrega', 'tipo_pedido', 'desc_tipo_movimento', 
+                'volume_hectolitro', 'situacao_item', 'situacao_atend_item', 'situacao_nf'
+            ];
+        }
+        const conjuntoColunasPermitidas = new Set(colunasPermitidas);
+
+        statusDiv.innerText = "Lendo arquivo...";
+
+        // --- PASSO B: LEITURA DO ARQUIVO ---
+        const reader = new FileReader();
+        
+        reader.onload = async function(evt) {
+            try {
+                const data = new Uint8Array(evt.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                
+                const matrizDados = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                
+                if (matrizDados.length <= 1) {
+                    throw new Error("O arquivo Excel está vazio.");
+                }
+
+                const cabecalhos = matrizDados[0];
+                dadosProntosParaEnviar = [];
+                const totalLinhas = matrizDados.length;
+
+                // --- PASSO C: PROCESSAMENTO E FILTRO ---
+                for (let i = 1; i < totalLinhas; i++) {
+                    const linhaAtual = matrizDados[i];
+                    if (!linhaAtual || linhaAtual.length === 0) continue;
+
+                    const linhaLimpa = {};
+                    cabecalhos.forEach((colunaOriginal, indexColuna) => {
+                        const colunaLimpa = limparNomeColuna(colunaOriginal);
+                        if (conjuntoColunasPermitidas.has(colunaLimpa)) {
+                            linhaLimpa[colunaLimpa] = linhaAtual[indexColuna] !== undefined ? linhaAtual[indexColuna] : null;
+                        }
+                    });
+
+                    dadosProntosParaEnviar.push(linhaLimpa);
+
+                    if (i % 3000 === 0 || i === totalLinhas - 1) {
+                        const parcial = Math.round((i / totalLinhas) * 15);
+                        progressBar.style.width = `${parcial}%`;
+                        progressPercentage.innerText = `${parcial}%`;
+                        statusDiv.innerText = `Tratando dados... (${i}/${totalLinhas - 1})`;
+                        await new Promise(resolve => setTimeout(resolve, 5));
                     }
                 }
 
-                // Gerar ID se não existir
-                if (!mapped.id) {
-                    mapped.id = `IMP-${String(index + 1).padStart(3, "0")}`;
+                // --- PASSO D: ENVIO DIRETO EM LOTES ---
+                const tamanhoDoLote = 1000;
+                const totalRegistros = dadosProntosParaEnviar.length;
+
+                for (let i = 0; i < totalRegistros; i += tamanhoDoLote) {
+                    const lote = dadosProntosParaEnviar.slice(i, i + tamanhoDoLote);
+                    
+                    const { error } = await banco
+                        .from('Pedidos')
+                        .insert(lote);
+
+                    if (error) throw error;
+                    
+                    const enviadosAteAgora = Math.min(i + tamanhoDoLote, totalRegistros);
+                    const porcentagemEnvio = Math.round(15 + ((enviadosAteAgora / totalRegistros) * 85));
+                    
+                    progressBar.style.width = `${porcentagemEnvio}%`;
+                    progressPercentage.innerText = `${porcentagemEnvio}%`;
+                    statusDiv.innerText = `Salvando no banco... (${enviadosAteAgora}/${totalRegistros})`;
+
+                    await new Promise(resolve => setTimeout(resolve, 40));
                 }
 
-                // Formatar datas (aceita Date objects ou strings)
-                mapped.data_pedido = formatExcelDate(mapped.data_pedido);
-                mapped.data_prevista = formatExcelDate(mapped.data_prevista);
-                mapped.data_entrega = formatExcelDate(mapped.data_entrega);
+                // SUCESSO COLETIVO
+                statusDiv.innerHTML = "🎉 Planilha importada com sucesso!";
+                inputArquivo.value = ""; 
+                
+                // Libera o botão visual novamente
+                btnVisual.disabled = false;
+                inputArquivo.disabled = false;
+                
+                if (typeof carregarPedidosReais === "function") carregarPedidosReais();
 
-                // Garantir numéricos
-                mapped.valor = parseFloat(mapped.valor) || 0;
-                mapped.quantidade_pedida = parseInt(mapped.quantidade_pedida) || 0;
-                mapped.quantidade_entregue = parseInt(mapped.quantidade_entregue) || 0;
-                mapped.volume_hl = parseFloat(mapped.volume_hl) || 0;
+            } catch (erroInterno) {
+                console.error(erroInterno);
+                statusDiv.innerHTML = `❌ Erro: <span style="color:red;">${erroInterno.message}</span>`;
+                progressBar.style.backgroundColor = "#ff4d4d";
+                btnVisual.disabled = false;
+                inputArquivo.disabled = false;
+            }
+        };
 
-                // Defaults
-                mapped.cliente = mapped.cliente || "Não informado";
-                mapped.transportadora = mapped.transportadora || "Não informado";
-                mapped.categoria = mapped.categoria || "Geral";
-                mapped.motivo_falha = mapped.motivo_falha || "Nenhum";
+        reader.readAsArrayBuffer(file);
 
-                return mapped;
-            });
-
-            // Salvar no localStorage e atualizar dashboard
-            state.orders = orders;
-            localStorage.setItem("otif-imported-orders", JSON.stringify(orders));
-            state.dataSource = "excel";
-            showImportBadge(true);
-            populateFilterDropdowns();
-            clearFilters();
-            updateDashboard();
-
-            alert(`✅ ${orders.length} pedidos importados com sucesso da planilha "${file.name}"!`);
-
-        } catch (err) {
-            console.error("Erro ao processar planilha:", err);
-            alert("❌ Erro ao ler o arquivo. Verifique se é um arquivo Excel válido (.xlsx ou .xls).");
-        }
-    };
-
-    reader.readAsArrayBuffer(file);
-    // Limpar o input para permitir reimportação do mesmo arquivo
-    event.target.value = "";
-}
-
-// Converte datas do Excel (Date object, serial number ou string) para formato YYYY-MM-DD
-function formatExcelDate(value) {
-    if (!value) return "";
-    if (value instanceof Date) {
-        return value.toISOString().split("T")[0];
+    } catch (err) {
+        console.error(err);
+        statusDiv.innerHTML = `❌ Conexão: <span style="color:red;">${err.message}</span>`;
+        progressBar.style.backgroundColor = "#ff4d4d";
+        btnVisual.disabled = false;
+        inputArquivo.disabled = false;
     }
-    if (typeof value === "number") {
-        // Serial number do Excel (dias desde 1900-01-01)
-        const date = new Date((value - 25569) * 86400 * 1000);
-        return date.toISOString().split("T")[0];
-    }
-    // String — tentar interpretar
-    const str = String(value).trim();
-    // Formato DD/MM/YYYY
-    const brMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-    if (brMatch) {
-        return `${brMatch[3]}-${brMatch[2].padStart(2, "0")}-${brMatch[1].padStart(2, "0")}`;
-    }
-    // Formato YYYY-MM-DD (já correto)
-    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-        return str;
-    }
-    return str;
-}
-
-// Limpar dados importados e voltar aos dados anteriores
-function clearImportedData() {
-    if (!confirm("Deseja remover os dados importados do Excel e voltar aos dados originais?")) return;
-
-    localStorage.removeItem("otif-imported-orders");
-    state.dataSource = "local";
-    showImportBadge(false);
-
-    // Recarregar dados originais
-    const savedData = localStorage.getItem("otif-orders");
-    if (savedData) {
-        state.orders = JSON.parse(savedData);
-    } else if (typeof INITIAL_ORDERS_DATA !== 'undefined') {
-        state.orders = JSON.parse(JSON.stringify(INITIAL_ORDERS_DATA));
-    } else {
-        state.orders = [];
-    }
-
-    populateFilterDropdowns();
-    clearFilters();
-    updateDashboard();
-    alert("✅ Dados importados removidos. Dashboard restaurado.");
-}
+});
