@@ -7,7 +7,7 @@
     <title>Dashboard OTIF</title>
 </head>
 <body>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <div class="container">
         <!-- Cabeçalho Principal -->
         <header>
@@ -23,11 +23,22 @@
                 <button class="btn btn-secondary" id="btn-importar" title="Importar pedidos a partir de planilha Excel">
                     <i data-lucide="upload"></i> Importar Excel
                 </button>
+                <input type="file" id="produto-file-input" accept=".xlsx, .xls, .csv" style="display:none;">
+                <button class="btn btn-secondary" id="btn-importar-produtos" title="Importar produtos a partir de planilha Excel">
+                    <i data-lucide="package-plus"></i> Importar Produtos
+                </button>
+                <input type="file" id="cliente-file-input" accept=".xlsx, .xls, .csv" style="display:none;">
+                <button class="btn btn-secondary" id="btn-importar-clientes" title="Importar clientes a partir de planilha Excel">
+                    <i data-lucide="users"></i> Importar Clientes
+                </button>
             </div>
         </header>
 
         <!-- Painel de Filtros -->
         <section class="filters-panel">
+            <div class="periodo-ativo" style="text-align: center; padding: 8px; font-size: 13px; color: var(--text-muted);">
+                Período: <span id="periodo-label" style="font-weight: 600; color: var(--accent);">Todos os períodos</span>
+            </div>
             <div class="filters-grid">
                 <div class="filter-group">
                     <label for="filter-month">Mês</label>
@@ -76,15 +87,18 @@
                     <h3 id="kpi-otif-title">% OTIF</h3>
                     <div class="kpi-value" id="kpi-otif">0.0%</div>
                     <div class="kpi-meta" id="kpi-otif-meta">
-                        <i data-lucide="target" style="width:14px;height:14px;"></i> Meta: 85.0%
+                        <i data-lucide="target" style="width:14px;height:14px;"></i> Meta: 93%
                     </div>
                 </div>
                 <div class="kpi-chart-icon">
-                    <svg class="radial-progress" viewBox="0 0 36 36">
-                        <circle class="bg" cx="18" cy="18" r="15.915"></circle>
-                        <circle class="progress" cx="18" cy="18" r="15.915"></circle>
-                    </svg>
-                    <span class="radial-text" id="kpi-otif-radial-label">OTIF</span>
+                    <div class="kpi-radial-wrap">
+                        <svg class="radial-progress" viewBox="0 0 36 36">
+                            <circle class="bg" cx="18" cy="18" r="15.915"></circle>
+                            <circle class="progress" cx="18" cy="18" r="15.915"></circle>
+                        </svg>
+                        <span class="radial-text" id="kpi-otif-radial-label">OTIF</span>
+                    </div>
+                    <div class="kpi-total-count" id="kpi-otif-count">0 pedidos</div>
                 </div>
             </div>
 
@@ -94,15 +108,18 @@
                     <h3 id="kpi-ot-title">% On-Time</h3>
                     <div class="kpi-value" id="kpi-ot">0.0%</div>
                     <div class="kpi-meta" id="kpi-ot-meta">
-                        <i data-lucide="target" style="width:14px;height:14px;"></i> Meta: 90.0%
+                        <i data-lucide="target" style="width:14px;height:14px;"></i> Meta: 97%
                     </div>
                 </div>
                 <div class="kpi-chart-icon">
-                    <svg class="radial-progress" viewBox="0 0 36 36">
-                        <circle class="bg" cx="18" cy="18" r="15.915"></circle>
-                        <circle class="progress" cx="18" cy="18" r="15.915"></circle>
-                    </svg>
-                    <span class="radial-text" id="kpi-ot-radial-label">Prazo</span>
+                    <div class="kpi-radial-wrap">
+                        <svg class="radial-progress" viewBox="0 0 36 36">
+                            <circle class="bg" cx="18" cy="18" r="15.915"></circle>
+                            <circle class="progress" cx="18" cy="18" r="15.915"></circle>
+                        </svg>
+                        <span class="radial-text" id="kpi-ot-radial-label">Prazo</span>
+                    </div>
+                    <div class="kpi-total-count" id="kpi-ot-count">0 pedidos</div>
                 </div>
             </div>
 
@@ -112,15 +129,18 @@
                     <h3 id="kpi-if-title">% In-Full</h3>
                     <div class="kpi-value" id="kpi-if">0.0%</div>
                     <div class="kpi-meta" id="kpi-if-meta">
-                        <i data-lucide="target" style="width:14px;height:14px;"></i> Meta: 95.0%
+                        <i data-lucide="target" style="width:14px;height:14px;"></i> Meta: 98%
                     </div>
                 </div>
                 <div class="kpi-chart-icon">
-                    <svg class="radial-progress" viewBox="0 0 36 36">
-                        <circle class="bg" cx="18" cy="18" r="15.915"></circle>
-                        <circle class="progress" cx="18" cy="18" r="15.915"></circle>
-                    </svg>
-                    <span class="radial-text" id="kpi-if-radial-label">Carga</span>
+                    <div class="kpi-radial-wrap">
+                        <svg class="radial-progress" viewBox="0 0 36 36">
+                            <circle class="bg" cx="18" cy="18" r="15.915"></circle>
+                            <circle class="progress" cx="18" cy="18" r="15.915"></circle>
+                        </svg>
+                        <span class="radial-text" id="kpi-if-radial-label">Carga</span>
+                    </div>
+                    <div class="kpi-total-count" id="kpi-if-count">0 pedidos</div>
                 </div>
             </div>
 
@@ -131,16 +151,18 @@
                     <div class="kpi-value" id="kpi-total">0</div>
                 </div>
                 <div class="kpi-chart-icon">
-                    <svg class="radial-progress" viewBox="0 0 36 36">
-                        <circle class="bg" cx="18" cy="18" r="15.915"></circle>
-                        <circle class="progress" cx="18" cy="18" r="15.915"></circle>
-                    </svg>
-                    <span class="radial-text" id="kpi-total-radial-label">Total</span>
+                    <div class="kpi-radial-wrap">
+                        <svg class="radial-progress" viewBox="0 0 36 36">
+                            <circle class="bg" cx="18" cy="18" r="15.915"></circle>
+                            <circle class="progress" cx="18" cy="18" r="15.915"></circle>
+                        </svg>
+                        <span class="radial-text" id="kpi-total-radial-label">Total</span>
+                    </div>
                 </div>
             </div>
         </section>
 
-
+        <!-- Gráfico OTIF -->
         <div class="tab-panel-content active" id="tab-panel-pdv">
             <div class="ranking-grid">
                 <div class="chart-card">
@@ -152,24 +174,11 @@
                     </div>
                 </div>
                 <div class="ranking-card">
-                    <div class="ranking-title">
-                        <i data-lucide="store" style="color: var(--primary);"></i> Desempenho por PDV
+                    <div class="chart-header">
+                        <h2>% OT por mês</h2>
                     </div>
-                    <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
-                        <table class="orders-table" style="font-size: 13px;">
-                            <thead>
-                                <tr>
-                                    <th>Cliente</th>
-                                    <th>Ped. Totais</th>
-                                    <th>Atrasos</th>
-                                    <th>Cortes</th>
-                                    <th>OTIF %</th>
-                                </tr>
-                            </thead>
-                            <tbody id="ranking-pdv-body">
-
-                            </tbody>
-                        </table>
+                    <div class="chart-container">
+                        <canvas id="graficoOt"></canvas>
                     </div>
                 </div>
             </div>
@@ -177,18 +186,18 @@
             <div class="charts-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 32px;">
                 <div class="chart-card">
                     <div class="chart-header">
-                        <h2>Nível de Serviço (OTIF %) por Cliente</h2>
+                        <h2>%IF por mês</h2>
                     </div>
                     <div class="chart-container" style="min-height: 250px;">
-                        <canvas id="chart-pdv-otif"></canvas>
+                        <canvas id="graficoIf"></canvas>
                     </div>
                 </div>
                 <div class="chart-card">
                     <div class="chart-header">
-                        <h2>Causas de Falha nos PDVs (Consolidado)</h2>
+                        <h2>Ranking de Impacto no OTIF por Cliente</h2>
                     </div>
-                    <div class="chart-container" style="min-height: 250px;">
-                        <canvas id="chart-pdv-causes"></canvas>
+                    <div class="ranking-list" id="rankingClientes" style="overflow-y: auto; max-height: 320px;">
+                        <p style="color: var(--text-muted); text-align: center; padding: 20px;">Carregando ranking...</p>
                     </div>
                 </div>
             </div>
@@ -210,12 +219,12 @@
             </thead>
             <tbody id="resultado"></tbody>
         </table>
-        <button id="btnAnterior"><i data-lucide="chevron-left"></i></button>
-        <button id="btnProxima"><i data-lucide="chevron-right"></i></button>
-        <div id="saida"></div>
-        <div id="loading">
-            <div class="loader"></div>
+        <div class="pagination" id="paginacao">
+            <button id="btnAnterior" class="btn-page" disabled><i data-lucide="chevron-left"></i> Anterior</button>
+            <span id="paginaInfo" class="pagina-info">Página 1 de 1</span>
+            <button id="btnProxima" class="btn-page">Próxima <i data-lucide="chevron-right"></i></button>
         </div>
+        <div id="saida"></div>
     </div>
     <!-- Gráficos: Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

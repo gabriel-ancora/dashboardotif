@@ -154,6 +154,53 @@ tr:hover {
   margin-top: 16px;
 }
 
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--bg-card);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+}
+
+.btn-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-page:hover:not(:disabled) {
+  background: var(--primary);
+  color: var(--white);
+  border-color: var(--primary);
+}
+
+.btn-page:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagina-info {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 button {
   background: var(--primary);
   color: white;
@@ -609,6 +656,15 @@ header {
     color: var(--danger);
 }
 
+.ranking-list {
+    padding: 0 8px;
+}
+
+.ranking-item:hover {
+    background: rgba(255, 255, 255, 0.03);
+    transition: var(--transition);
+}
+
 @media (max-width: 1024px) {
     .ranking-grid {
         grid-template-columns: 1fr;
@@ -632,9 +688,9 @@ header {
     padding: 24px;
     box-shadow: var(--card-shadow);
     transition: var(--transition);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: stretch;
     position: relative;
     overflow: hidden;
 }
@@ -663,6 +719,13 @@ header {
 .kpi-card.kpi-if::before { background-color: var(--accent); }
 .kpi-card.kpi-total::before { background-color: var(--text-muted); }
 
+.kpi-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+}
+
 .kpi-info h3 {
     font-size: 14px;
     font-weight: 500;
@@ -690,13 +753,18 @@ header {
 .kpi-meta.trend-neutral { color: var(--text-secondary); }
 
 .kpi-chart-icon {
-    width: 54px;
-    height: 54px;
-    border-radius: 50%;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
     position: relative;
+    height: 100%;
+}
+
+.kpi-radial-wrap {
+    position: relative;
+    width: 60px;
+    height: 60px;
 }
 
 /* Gráfico Radial dentro do Card */
@@ -708,7 +776,7 @@ header {
 
 .radial-progress circle {
     fill: none;
-    stroke-width: 4;
+    stroke-width: 2.5;
 }
 
 .radial-progress .bg {
@@ -728,7 +796,166 @@ header {
 
 .radial-text {
     position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     font-size: 11px;
     font-weight: 600;
     color: var(--text-primary);
+}
+
+.kpi-total-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.ranking-tabs {
+    display: flex;
+    gap: 4px;
+}
+
+.ranking-tab {
+    padding: 4px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.ranking-tab:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+.ranking-tab.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.th-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+}
+
+.filter-icon {
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: all 0.15s;
+    user-select: none;
+}
+
+.filter-icon:hover,
+.filter-icon.active {
+    color: var(--primary);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.coluna-filtro-dropdown {
+    position: fixed;
+    z-index: 1000;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    width: 220px;
+    max-height: 300px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.coluna-filtro-busca {
+    padding: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.coluna-filtro-busca input {
+    width: 100%;
+    padding: 6px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 12px;
+    outline: none;
+}
+
+.coluna-filtro-busca input:focus {
+    border-color: var(--primary);
+}
+
+.coluna-filtro-lista {
+    overflow-y: auto;
+    flex: 1;
+    padding: 4px 0;
+}
+
+.coluna-filtro-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+    transition: background 0.1s;
+}
+
+.coluna-filtro-item:hover {
+    background: var(--border-color);
+}
+
+.coluna-filtro-item input[type="checkbox"] {
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.coluna-filtro-acoes {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    border-top: 1px solid var(--border-color);
+}
+
+.coluna-filtro-acoes button {
+    flex: 1;
+    padding: 5px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.coluna-filtro-acoes button:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+.coluna-filtro-acoes .btn-filtro-aplicar {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.coluna-filtro-acoes .btn-filtro-aplicar:hover {
+    opacity: 0.9;
+}
+
+th.has-filter .filter-icon.active {
+    color: var(--primary);
+    background: rgba(99, 102, 241, 0.15);
 }
