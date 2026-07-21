@@ -19,18 +19,30 @@
                 <p>Monitoramento de Nível de Serviço Logístico (Pilar Atendimento)</p>
             </div>
             <div class="header-actions">
-                <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" style="display:none;">
-                <button class="btn btn-secondary" id="btn-importar" title="Importar pedidos a partir de planilha Excel">
-                    <i data-lucide="upload"></i> Importar Excel
+                <div class="import-group">
+                    <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" style="display:none;">
+                    <button class="btn btn-secondary" id="btn-importar" title="Importar pedidos a partir de planilha Excel">
+                        <i data-lucide="upload"></i> Importar Excel
+                    </button>
+                    <div class="import-progress" id="progress-pedidos"><div class="import-progress-bar"></div><span class="import-progress-text"></span></div>
+                </div>
+                <button class="btn btn-danger" id="btn-limpar-banco" title="Excluir todos os dados do banco">
+                    <i data-lucide="trash-2"></i> Limpar Banco
                 </button>
-                <input type="file" id="produto-file-input" accept=".xlsx, .xls, .csv" style="display:none;">
-                <button class="btn btn-secondary" id="btn-importar-produtos" title="Importar produtos a partir de planilha Excel">
-                    <i data-lucide="package-plus"></i> Importar Produtos
-                </button>
-                <input type="file" id="cliente-file-input" accept=".xlsx, .xls, .csv" style="display:none;">
-                <button class="btn btn-secondary" id="btn-importar-clientes" title="Importar clientes a partir de planilha Excel">
-                    <i data-lucide="users"></i> Importar Clientes
-                </button>
+                <div class="import-group">
+                    <input type="file" id="produto-file-input" accept=".xlsx, .xls, .csv" style="display:none;">
+                    <button class="btn btn-secondary" id="btn-importar-produtos" title="Importar produtos a partir de planilha Excel">
+                        <i data-lucide="package-plus"></i> Importar Produtos
+                    </button>
+                    <div class="import-progress" id="progress-produtos"><div class="import-progress-bar"></div><span class="import-progress-text"></span></div>
+                </div>
+                <div class="import-group">
+                    <input type="file" id="cliente-file-input" accept=".xlsx, .xls, .csv" style="display:none;">
+                    <button class="btn btn-secondary" id="btn-importar-clientes" title="Importar clientes a partir de planilha Excel">
+                        <i data-lucide="users"></i> Importar Clientes
+                    </button>
+                    <div class="import-progress" id="progress-clientes"><div class="import-progress-bar"></div><span class="import-progress-text"></span></div>
+                </div>
             </div>
         </header>
 
@@ -194,9 +206,30 @@
                 </div>
                 <div class="chart-card">
                     <div class="chart-header">
-                        <h2>Ranking de Impacto no OTIF por Cliente</h2>
+                        <h2 id="ranking-title">Ranking de Impacto no OTIF por Cliente</h2>
+                    </div>
+                    <div style="display: flex; gap: 4px; padding: 0 16px 8px;">
+                        <button class="ranking-tab active" data-indicador="otif" onclick="mudarRanking('otif')">OTIF</button>
+                        <button class="ranking-tab" data-indicador="ot" onclick="mudarRanking('ot')">OT</button>
+                        <button class="ranking-tab" data-indicador="if" onclick="mudarRanking('if')">IF</button>
                     </div>
                     <div class="ranking-list" id="rankingClientes" style="overflow-y: auto; max-height: 320px;">
+                        <p style="color: var(--text-muted); text-align: center; padding: 20px;">Carregando ranking...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-grid" style="grid-template-columns: 1fr; margin-bottom: 32px;">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h2 id="ranking-produto-title">Ranking de Impacto no OTIF por Produto</h2>
+                    </div>
+                    <div style="display: flex; gap: 4px; padding: 0 16px 8px;">
+                        <button class="ranking-tab ranking-produto-tab active" data-indicador="otif" onclick="mudarRankingProduto('otif')">OTIF</button>
+                        <button class="ranking-tab ranking-produto-tab" data-indicador="ot" onclick="mudarRankingProduto('ot')">OT</button>
+                        <button class="ranking-tab ranking-produto-tab" data-indicador="if" onclick="mudarRankingProduto('if')">IF</button>
+                    </div>
+                    <div class="ranking-list" id="rankingProdutos" style="overflow-y: auto; max-height: 320px;">
                         <p style="color: var(--text-muted); text-align: center; padding: 20px;">Carregando ranking...</p>
                     </div>
                 </div>

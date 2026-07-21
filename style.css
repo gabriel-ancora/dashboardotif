@@ -363,6 +363,37 @@ header {
     gap: 12px;
 }
 
+.import-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.import-progress {
+    display: none;
+    width: 100%;
+    height: 4px;
+    background: var(--border-color);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+}
+.import-progress.active { display: block; }
+.import-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--primary);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+.import-progress-text {
+    font-size: 10px;
+    color: var(--text-muted);
+    position: absolute;
+    right: 0;
+    top: -14px;
+}
+
 .btn {
     display: inline-flex;
     align-items: center;
@@ -398,6 +429,16 @@ header {
 }
 [data-theme="light"] .btn-secondary:hover {
     background-color: rgba(0, 0, 0, 0.03);
+}
+
+.btn-danger {
+    background-color: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+}
+.btn-danger:hover {
+    background-color: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
 }
 
 .btn-circle {

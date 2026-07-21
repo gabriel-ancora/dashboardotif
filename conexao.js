@@ -17,6 +17,9 @@ let indicadorAtual = 'otif';
 let filtrosColuna = {};
 let modoVisualizacao = 'sku';
 let cacheClientes = null;
+let cacheProdutos = null;
+let totalMesesNoBanco = 0;
+let mesUnico = null;
 
 const METAS = {
   sku: { otif: 93, ot: 97, if_: 98 },
@@ -54,6 +57,29 @@ async function obterNomeCliente(codigo) {
   }
   const key = String(codigo).replace(/\./g, '');
   return cacheClientes[key] || `Cliente ${codigo}`;
+}
+
+async function carregarProdutosCompletos() {
+  const { count } = await banco.from('Produtos').select('codigo_produto', { count: 'exact', head: true });
+  const total = count || 0;
+  const pageSize = 1000;
+  const all = [];
+  for (let from = 0; from < total; from += pageSize) {
+    const { data } = await banco.from('Produtos').select('codigo_produto, descricao_produto').range(from, from + pageSize - 1);
+    if (data) all.push(...data);
+  }
+  return all;
+}
+
+async function obterDescricaoProduto(codigo) {
+  if (!cacheProdutos) {
+    const data = await carregarProdutosCompletos();
+    cacheProdutos = {};
+    (data || []).forEach(p => {
+      cacheProdutos[p.codigo_produto] = p.descricao_produto || null;
+    });
+  }
+  return cacheProdutos[codigo] || `Produto ${codigo}`;
 }
 
 function atualizarTitulosGraficos() {
@@ -94,8 +120,10 @@ function isModoDiario() {
 
 function buildFilterArgs() {
   const args = {};
-  if (filtros.mes != null) args.p_mes = filtros.mes;
-  if (filtros.ano != null) args.p_ano = filtros.ano;
+  if (filtros.mes != null) {
+    args.p_mes = filtros.mes;
+    args.p_ano = filtros.ano;
+  }
   if (filtros.dataInicio) args.p_data_inicio = filtros.dataInicio;
   if (filtros.dataFim) args.p_data_fim = filtros.dataFim;
   if (filtros.codCliente != null) args.p_cod_cliente = filtros.codCliente;
@@ -126,8 +154,8 @@ function montarFiltrosTabela() {
     .eq('tipo_pedido', TIPO_PEDIDO_FILTRO);
 
   if (filtros.codCliente != null) q = q.eq('cod_cliente', filtros.codCliente);
-  if (filtros.dataInicio) q = q.gte('data_entrega_original', filtros.dataInicio);
-  if (filtros.dataFim) q = q.lte('data_entrega_original', filtros.dataFim);
+  if (filtros.dataInicio) q = q.gte('data_entrega', filtros.dataInicio);
+  if (filtros.dataFim) q = q.lte('data_entrega', filtros.dataFim);
 
   for (const [col, valores] of Object.entries(filtrosColuna)) {
     if (col === '_status' || !valores || valores.length === 0) continue;
@@ -152,7 +180,6 @@ async function carregar() {
       rows = rows.filter(r => filtrosColuna['_status'].includes(obterStatusOTIF(r)));
     }
 
-    dadosFiltradosTabela = rows;
     renderizarTabela(rows);
     atualizarPaginacao();
     document.getElementById('periodo-label').textContent = obterPeriodoLabel();
@@ -348,6 +375,63 @@ function mudarRanking(indicador) {
   carregarRanking();
 }
 
+const TITULOS_RANKING_PRODUTO = {
+  otif: 'Ranking de Impacto no OTIF por Produto',
+  ot: 'Ranking de Impacto no OT por Produto',
+  if: 'Ranking de Impacto no IF por Produto'
+};
+
+function mudarRankingProduto(indicador) {
+  document.querySelectorAll('.ranking-produto-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.indicador === indicador);
+  });
+  document.getElementById('ranking-produto-title').textContent = TITULOS_RANKING_PRODUTO[indicador];
+  carregarRankingProduto(indicador);
+}
+
+async function carregarRankingProduto(indicador) {
+  indicador = indicador || 'otif';
+  const args = buildFilterArgs();
+  args.p_indicador = indicador;
+  const rpcMap = { sku: 'ranking_produto_otif', hl: 'ranking_produto_hl', pdv: 'ranking_produto_pdv' };
+  const { data, error } = await banco.rpc(rpcMap[modoVisualizacao], args);
+  if (error) { console.error("Erro ao carregar ranking produto:", error); return; }
+
+  const container = document.getElementById('rankingProdutos');
+
+  if (!data || data.length === 0) {
+    container.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">Nenhum dado de impacto encontrado</p>';
+    return;
+  }
+
+  const nomes = [];
+  for (const item of data) {
+    nomes.push(await obterDescricaoProduto(item.cod_produto));
+  }
+
+  let html = '';
+  data.forEach((item, index) => {
+    const impacto = Number(item.impacto);
+    const cor = impacto >= 3 ? 'var(--danger)' : impacto >= 2 ? 'var(--warning)' : 'var(--success)';
+    const bgCor = impacto >= 3 ? 'var(--danger-light)' : impacto >= 2 ? 'var(--warning-light)' : 'var(--success-light)';
+
+    html += `
+      <div class="ranking-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border-color);">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="width: 28px; height: 28px; border-radius: 50%; background: ${bgCor}; color: ${cor}; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;">${index + 1}</span>
+          <div>
+            <div style="font-weight: 600; font-size: 14px; color: var(--text-primary);">${nomes[index]}</div>
+            <div style="font-size: 12px; color: var(--text-muted);">${item.cod_produto}</div>
+          </div>
+        </div>
+        <span style="font-weight: 700; font-size: 16px; color: ${cor};">${item.impacto}%</span>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+}
+
 function renderGraficoOTIF(labels, valores) {
   const ctx = document.getElementById("graficoOtif");
   if (chartOTIF) chartOTIF.destroy();
@@ -472,16 +556,27 @@ function renderGraficoIF(labels, valores) {
 }
 
 function parseDataBR(dataStr) {
-  if (!dataStr) return null;
-  const [dia, mes, ano] = dataStr.split('/');
-  return new Date(`${ano}-${mes}-${dia}`);
+  if (!dataStr || typeof dataStr !== 'string') return null;
+  const limpo = dataStr.trim();
+  if (!limpo) return null;
+  if (limpo.includes('/')) {
+    const [dia, mes, ano] = limpo.split('/');
+    if (!dia || !mes || !ano) return null;
+    return new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+  }
+  if (limpo.includes('-')) {
+    const [ano, mes, dia] = limpo.split('-');
+    if (!ano || !mes || !dia) return null;
+    return new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+  }
+  return null;
 }
 
 function calculoONTIME(dataEntrega, dataOriginal) {
   const entrega = parseDataBR(dataEntrega);
   const original = parseDataBR(dataOriginal);
   if (!entrega || !original) return false;
-  return entrega <= original;
+  return entrega.getTime() <= original.getTime();
 }
 
 function calculoINFULL(item) {
@@ -524,9 +619,9 @@ function obterStatusOTIF(pedidos) {
   const isOt = calculoONTIME(pedidos.data_entrega, pedidos.data_entrega_original);
   const isIf = calculoINFULL(pedidos);
   if (isOt && isIf) return "OTIF";
-  if (!isOt && isIf) return "On Time";
   if (isOt && !isIf) return "In Full";
-  return "On Time";
+  if (!isOt && isIf) return "On Time";
+  return "FALHA";
 }
 
 function renderizarTabela(data) {
@@ -575,7 +670,7 @@ async function toggleFiltroColuna(event, coluna) {
   let valoresOrdenados = [];
 
   if (coluna === '_status') {
-    valoresOrdenados = ['OTIF', 'On Time', 'In Full'];
+    valoresOrdenados = ['OTIF', 'On Time', 'In Full', 'FALHA'];
   } else {
     const { data } = await banco.rpc('valores_coluna', { p_coluna: coluna });
     valoresOrdenados = (data || []).map(r => r.valor).filter(Boolean).sort((a, b) => {
@@ -694,6 +789,13 @@ async function carregarFiltros() {
 
   const meses = mesesRes.data || [];
   const clientes = clientesRes.data || [];
+  
+  totalMesesNoBanco = meses.length;
+  if (totalMesesNoBanco === 1) {
+    mesUnico = meses[0];
+  } else {
+    mesUnico = null;
+  }
 
   const mesSelect = document.getElementById('filter-month');
   mesSelect.innerHTML = '<option value="">Todos os meses</option>';
@@ -722,7 +824,8 @@ async function carregarTudo() {
     carregarGraficoOTIF(),
     carregarGraficoOT(),
     carregarGraficoIF(),
-    carregarRanking()
+    carregarRanking(),
+    carregarRankingProduto(indicadorAtual)
   ]);
 }
 
@@ -790,6 +893,30 @@ function normalizarTexto(str) {
   return String(str || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
 }
 
+function normalizarColuna(str) {
+  return String(str || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, '_');
+}
+
+function showProgress(id) {
+  const el = document.getElementById(id);
+  el.classList.add('active');
+  el.querySelector('.import-progress-bar').style.width = '0%';
+  el.querySelector('.import-progress-text').textContent = '';
+}
+function updateProgress(id, current, total) {
+  const el = document.getElementById(id);
+  const pct = Math.round((current / total) * 100);
+  el.querySelector('.import-progress-bar').style.width = pct + '%';
+  el.querySelector('.import-progress-text').textContent = `${current}/${total}`;
+}
+function hideProgress(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('active');
+}
+
 async function importarProdutos() {
   const fileInput = document.getElementById('produto-file-input');
   const file = fileInput.files[0];
@@ -800,25 +927,31 @@ async function importarProdutos() {
     try {
       const wb = XLSX.read(e.target.result, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws);
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
       if (rows.length === 0) { alert('Planilha vazia.'); return; }
 
-      const colunasPlanilha = { 'codigo': 'codigo_produto', 'descricao': 'descricao_produto', 'tipo marca': 'tipo_marca', 'embalagem': 'embalagem' };
+      const colunasPlanilhaAliases = {
+        'codigo_produto': ['codigo_produto', 'cod_produto', 'produto', 'cod_prod', 'codigo', 'cod'],
+        'descricao_produto': ['descricao_produto', 'descricao', 'desc_produto', 'nome_produto', 'desc'],
+        'tipo_marca': ['tipo_marca', 'marca', 'tipo'],
+        'embalagem': ['embalagem', 'emb']
+      };
       const primeirasChaves = Object.keys(rows[0]);
       const colEncontradas = {};
+      const usadas = new Set();
 
-      console.log('Colunas encontradas na planilha:', primeirasChaves);
-
-      for (const [colPlanilha, colBanco] of Object.entries(colunasPlanilha)) {
-        const found = primeirasChaves.find(k => normalizarTexto(k) === colPlanilha);
-        if (found) colEncontradas[found] = colBanco;
+      for (const [colBanco, aliases] of Object.entries(colunasPlanilhaAliases)) {
+        const found = primeirasChaves.find(k => {
+          if (usadas.has(k)) return false;
+          const norm = normalizarColuna(k);
+          return aliases.includes(norm) || norm.includes(colBanco.replace(/_/g, ''));
+        });
+        if (found) { colEncontradas[found] = colBanco; usadas.add(found); }
       }
 
-      console.log('Colunas mapeadas:', colEncontradas);
-
       if (Object.keys(colEncontradas).length === 0) {
-        alert('Nenhuma coluna reconhecida.\nColunas na planilha: ' + primeirasChaves.join(', ') + '\nColunas esperadas: Código, Descrição, Tipo marca, Embalagem');
+        alert('Nenhuma coluna reconhecida.\nColunas na planilha: ' + primeirasChaves.join(', '));
         return;
       }
 
@@ -833,16 +966,25 @@ async function importarProdutos() {
       if (registros.length === 0) { alert('Nenhum registro válido encontrado.'); return; }
 
       const codigos = registros.map(r => r.codigo_produto);
+      showProgress('progress-produtos');
       await banco.from('Produtos').delete().in('codigo_produto', codigos);
 
-      const { error } = await banco.from('Produtos').insert(registros);
-      if (error) { console.error('Erro ao importar produtos:', error); alert('Erro: ' + error.message); return; }
+      const BATCH_P = 500;
+      for (let i = 0; i < registros.length; i += BATCH_P) {
+        const lote = registros.slice(i, i + BATCH_P);
+        const { error } = await banco.from('Produtos').insert(lote);
+        if (error) { hideProgress('progress-produtos'); console.error('Erro ao importar produtos:', error); alert('Erro: ' + error.message); return; }
+        updateProgress('progress-produtos', Math.min(i + BATCH_P, registros.length), registros.length);
+        if (i + BATCH_P < registros.length) await new Promise(r => setTimeout(r, 0));
+      }
+      hideProgress('progress-produtos');
 
       alert(`${registros.length} produtos importados com sucesso!`);
+      cacheProdutos = null;
       fileInput.value = '';
     } catch (err) {
       console.error('Erro ao processar planilha:', err);
-      alert('Erro ao processar a planilha.');
+      alert('Erro ao processar a planilha:\n' + (err.message || err));
     }
   };
   reader.readAsArrayBuffer(file);
@@ -858,29 +1000,34 @@ async function importarClientes() {
     try {
       const wb = XLSX.read(e.target.result, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws);
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
       if (rows.length === 0) { alert('Planilha vazia.'); return; }
 
-      const colunasPlanilha = {
-        'codigo cliente': 'cod_cliente',
-        'razao social': 'razao_social',
-        'bairro': 'bairro',
-        'nome fantasia': 'nome_fantasia',
-        'cnpj': 'cnpj',
-        'nome estabelecimento': 'nome_estabelecimento',
-        'cidade': 'cidade'
+      const colunasPlanilhaAliases = {
+        'cod_cliente': ['cod_cliente', 'codigo_cliente', 'cliente', 'cod_cli', 'codigo', 'cod'],
+        'razao_social': ['razao_social', 'razao', 'rzsocial'],
+        'bairro': ['bairro'],
+        'nome_fantasia': ['nome_fantasia', 'fantasia'],
+        'cnpj': ['cnpj', 'cgc'],
+        'nome_estabelecimento': ['nome_estabelecimento', 'estabelecimento', 'nome_estab'],
+        'cidade': ['cidade']
       };
       const primeirasChaves = Object.keys(rows[0]);
       const colEncontradas = {};
+      const usadas = new Set();
 
-      for (const [colPlanilha, colBanco] of Object.entries(colunasPlanilha)) {
-        const found = primeirasChaves.find(k => normalizarTexto(k) === colPlanilha);
-        if (found) colEncontradas[found] = colBanco;
+      for (const [colBanco, aliases] of Object.entries(colunasPlanilhaAliases)) {
+        const found = primeirasChaves.find(k => {
+          if (usadas.has(k)) return false;
+          const norm = normalizarColuna(k);
+          return aliases.includes(norm) || norm.includes(colBanco.replace(/_/g, ''));
+        });
+        if (found) { colEncontradas[found] = colBanco; usadas.add(found); }
       }
 
       if (Object.keys(colEncontradas).length === 0) {
-        alert('Nenhuma coluna reconhecida.\nColunas na planilha: ' + primeirasChaves.join(', ') + '\nColunas esperadas: Código Cliente, Razão Social, Bairro, Nome Fantasia, CNPJ, Nome Estabelecimento, Cidade');
+        alert('Nenhuma coluna reconhecida.\nColunas na planilha: ' + primeirasChaves.join(', '));
         return;
       }
 
@@ -897,17 +1044,162 @@ async function importarClientes() {
       if (registros.length === 0) { alert('Nenhum registro válido encontrado.'); return; }
 
       const codigos = registros.map(r => r.cod_cliente);
+      showProgress('progress-clientes');
       await banco.from('Clientes').delete().in('cod_cliente', codigos);
 
-      const { error } = await banco.from('Clientes').insert(registros);
-      if (error) { console.error('Erro ao importar clientes:', error); alert('Erro: ' + error.message); return; }
+      const BATCH_C = 500;
+      for (let i = 0; i < registros.length; i += BATCH_C) {
+        const lote = registros.slice(i, i + BATCH_C);
+        const { error } = await banco.from('Clientes').insert(lote);
+        if (error) { hideProgress('progress-clientes'); console.error('Erro ao importar clientes:', error); alert('Erro: ' + error.message); return; }
+        updateProgress('progress-clientes', Math.min(i + BATCH_C, registros.length), registros.length);
+        if (i + BATCH_C < registros.length) await new Promise(r => setTimeout(r, 0));
+      }
+      hideProgress('progress-clientes');
 
       alert(`${registros.length} clientes importados com sucesso!`);
       cacheClientes = null;
       fileInput.value = '';
     } catch (err) {
       console.error('Erro ao processar planilha:', err);
-      alert('Erro ao processar a planilha.');
+      alert('Erro ao processar a planilha:\n' + (err.message || err));
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function limparBanco() {
+  if (!confirm('Tem certeza que deseja excluir TODOS os dados do banco? Essa ação não pode ser desfeita.')) return;
+  if (!confirm('Última chance: confirmar exclusão de todos os pedidos, produtos e clientes?')) return;
+
+  const tabelas = [
+    { nome: 'Pedidos', coluna: 'ped_id', tipo: 'bigint' },
+    { nome: 'Produtos', coluna: 'codigo_produto', tipo: 'text' },
+    { nome: 'Clientes', coluna: 'cli_id', tipo: 'bigint' }
+  ];
+  const erros = [];
+
+  for (const { nome, coluna, tipo } of tabelas) {
+    const { data, error: selErr } = await banco.from(nome).select(coluna).limit(1);
+    if (selErr || !data || data.length === 0) continue;
+    let query = banco.from(nome).delete();
+    query = tipo === 'text' ? query.neq(coluna, '\0') : query.gte(coluna, 0);
+    const { error } = await query;
+    if (error) erros.push(`${nome}: ${error.message}`);
+  }
+
+  cacheClientes = null;
+  cacheProdutos = null;
+
+  if (erros.length > 0) {
+    alert('Exclusão concluída com avisos:\n' + erros.join('\n'));
+  } else {
+    alert('Todos os dados foram excluídos com sucesso!');
+  }
+
+  carregarTudo();
+}
+
+async function importarExcel() {
+  const fileInput = document.getElementById('excel-file-input');
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' });
+
+      if (rows.length === 0) { alert('Planilha vazia.'); return; }
+
+      const colunasPlanilhaAliases = {
+        'numero_pedido': ['numero_pedido', 'n_pedido', 'pedido', 'numero'],
+        'cod_cliente': ['cod_cliente', 'codigo_cliente', 'cliente', 'cod_cli'],
+        'cod_produto': ['cod_produto', 'codigo_produto', 'produto', 'cod_prod'],
+        'data_entrega_original': ['data_entrega_original', 'data_original', 'previsao_entrega', 'previsao'],
+        'data_entrega': ['data_entrega', 'entrega', 'data_de_entrega', 'dt_entrega'],
+        'tipo_pedido': ['tipo_pedido'],
+        'desc_tipo_movimento': ['desc_tipo_movimento', 'descricao_tipo_movimento', 'tipo_movimento', 'movimento'],
+        'volume_hectolitro': ['volume_hectolitro', 'volume_hl', 'hl', 'volume'],
+        'situacao_item': ['situacao_item', 'status_item', 'sit_item'],
+        'situacao_atend_item': ['situacao_atend_item', 'sit_atend_item', 'situacao_atendimento', 'status_atendimento'],
+        'situacao_nf': ['situacao_nf', 'sit_nf', 'status_nf', 'situacao_da_nf', 'nota_fiscal']
+      };
+
+      const primeirasChaves = Object.keys(rows[0]);
+      const colEncontradas = {};
+      const usadas = new Set();
+
+      for (const [colBanco, aliases] of Object.entries(colunasPlanilhaAliases)) {
+        const found = primeirasChaves.find(k => {
+          if (usadas.has(k)) return false;
+          const norm = normalizarColuna(k);
+          return aliases.includes(norm) || norm.includes(colBanco.replace(/_/g, ''));
+        });
+        if (found) { colEncontradas[found] = colBanco; usadas.add(found); }
+      }
+
+      if (Object.keys(colEncontradas).length === 0) {
+        alert('Nenhuma coluna reconhecida.\nColunas na planilha: ' + primeirasChaves.join(', '));
+        return;
+      }
+
+      const colEntries = Object.entries(colEncontradas);
+      const registros = [];
+      const CHUNK = 1000;
+      for (let c = 0; c < rows.length; c += CHUNK) {
+        const slice = rows.slice(c, c + CHUNK);
+        for (const row of slice) {
+          const obj = {
+             numero_pedido: null,
+             cod_cliente: null,
+             data_entrega_original: null,
+             data_entrega: null,
+             tipo_pedido: null,
+             desc_tipo_movimento: null,
+             volume_hectolitro: null,
+             situacao_item: null,
+             situacao_atend_item: null,
+             cod_produto: '',
+             situacao_nf: ''
+          };
+          for (let j = 0; j < colEntries.length; j++) {
+            const [colOriginal, colBanco] = colEntries[j];
+            const val = row[colOriginal];
+            if (val == null || val === '') continue;
+            if (colBanco === 'numero_pedido' || colBanco === 'cod_cliente') {
+              obj[colBanco] = parseInt(String(val).replace(/\D/g, ''), 10);
+            } else {
+              obj[colBanco] = String(val).trim();
+            }
+          }
+          if (obj.numero_pedido != null && !isNaN(obj.numero_pedido)) registros.push(obj);
+        }
+        if (c + CHUNK < rows.length) await new Promise(r => setTimeout(r, 0));
+      }
+
+      if (registros.length === 0) { alert('Nenhum registro válido encontrado.'); return; }
+
+      const BATCH = 500;
+      showProgress('progress-pedidos');
+      for (let i = 0; i < registros.length; i += BATCH) {
+        const lote = registros.slice(i, i + BATCH);
+        const { error } = await banco.from('Pedidos').insert(lote);
+        if (error) { hideProgress('progress-pedidos'); console.error('Erro ao importar pedidos:', error); alert('Erro: ' + error.message); return; }
+        updateProgress('progress-pedidos', Math.min(i + BATCH, registros.length), registros.length);
+        if (i + BATCH < registros.length) await new Promise(r => setTimeout(r, 0));
+      }
+      hideProgress('progress-pedidos');
+
+      alert(`${registros.length} pedidos importados com sucesso!`);
+      cacheClientes = null;
+      fileInput.value = '';
+      carregarTudo();
+    } catch (err) {
+      console.error('Erro ao processar planilha:', err);
+      alert('Erro ao processar a planilha:\n' + (err.message || err));
     }
   };
   reader.readAsArrayBuffer(file);
@@ -925,6 +1217,11 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById('cliente-file-input').click();
   });
   document.getElementById("cliente-file-input").addEventListener("change", importarClientes);
+  document.getElementById("btn-limpar-banco").addEventListener("click", limparBanco);
+  document.getElementById("btn-importar").addEventListener("click", () => {
+    document.getElementById('excel-file-input').click();
+  });
+  document.getElementById("excel-file-input").addEventListener("change", importarExcel);
 
   document.getElementById("filter-month").addEventListener("change", onFiltroChange);
   document.getElementById("filter-start-date").addEventListener("change", onFiltroChange);
